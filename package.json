@@ -1,0 +1,11 @@
+{
+  "name": "hotel-booking",
+  "private": true,  
+  "version": "1.0.0",
+  "scripts": {
+    "server:dev": "pnpm --filter server dev",  
+    "web:dev": "pnpm --filter web dev",       
+    "mobile:android": "pnpm --filter mobile android",
+    "mobile:ios": "pnpm --filter mobile ios"   
+  }
+}

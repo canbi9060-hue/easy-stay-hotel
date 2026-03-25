@@ -1,0 +1,250 @@
+// 整体登录布局
+.login {
+  display: flex;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+
+  // 左侧背景区域
+  .login-left {
+    flex: 1;
+    background: url("../../../assets/images/loginbg.png") no-repeat center center;
+    background-size: cover;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    text-align: center;
+
+    &::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      z-index: 1;
+    }
+
+    .content-wrap {
+      position: relative;
+      z-index: 2;
+    }
+
+    .title {
+      font-size: 42px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .subtitleEn {
+      font-size: 22px;
+      letter-spacing: 2px;
+      margin-bottom: 32px;
+      opacity: 0.9;
+    }
+
+    .divider {
+      width: 200px;
+      height: 1px;
+      background: #fff;
+      margin: 24px auto;
+    }
+
+    .slogan {
+      font-size: 24px;
+      font-weight: 500;
+    }
+  }
+
+  // 右侧登录区域
+  .login-right {
+    flex: 0 0 500px;
+    background: #f1eded;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 40px;
+
+    // 登录卡片容器
+    .login-right-content {
+      width: 100%;
+      max-width: 400px;
+      padding: 40px 32px;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+      text-align: center;
+
+      // 登录标题
+      .cardTitle {
+        font-size: 24px;
+        font-weight: 600;
+        color: #333333;
+        margin-bottom: 8px;
+      }
+
+      // 登录描述
+      .cardDesc {
+        font-size: 14px;
+        color: #666666;
+        margin-bottom: 32px;
+      }
+
+      // 表单容器
+      form {
+        width: 100%;
+        margin: 0 auto;
+        text-align: left;
+
+        // 验证码容器（最终优化版）
+        .captcha-wrap {
+          display: flex;
+          gap: 8px;
+          align-items: center;
+          width: 100%;
+
+          // 验证码输入框样式优化
+          .captcha-input {
+            flex: 1;
+            height: 40px;
+            border-radius: 5px;
+            border: 1px solid rgba(0, 0, 0, 0.2);
+            padding: 0 12px;
+            background: #fff;
+            font-size: 14px;
+
+            &:focus {
+              border-color: #1890ff;
+              outline: none;
+            }
+          }
+
+          // Canvas容器（适配Vue版逻辑 + React显示）
+          .captcha-img-wrap {
+            width: 100px !important; // 适配4个字符宽度，取消50%拉伸
+            height: 40px;
+            border: 1px solid #ccc; // 和Vue版一致的边框
+            border-radius: 5px; // 和Vue版一致的圆角
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            position: relative;
+            overflow: visible; // 防止裁剪验证码
+            background: #ffffff !important; // 强制白色背景，解决全黑
+
+            &:hover {
+              border-color: #1890ff;
+            }
+
+            // Canvas 核心样式（完全适配Vue版）
+            .captcha-img {
+              width: 100% !important; // 容器宽度100%，不再固定180px
+              height: 100% !important; // 容器高度100%
+              background: #ffffff !important; // 强制白色背景
+              display: block;
+              border-radius: 5px; // 和容器一致的圆角
+            }
+
+            // 刷新图标样式优化
+            .refresh-icon {
+              position: absolute;
+              right: 4px;
+              top: 4px;
+              font-size: 12px;
+              color: rgba(0, 0, 0, 0.45);
+              background: rgba(255, 255, 255, 0.7);
+              width: 18px;
+              height: 18px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              z-index: 10; // 确保不被遮挡
+
+              &:hover {
+                color: #1890ff;
+              }
+            }
+          }
+        }
+
+        // 密码强度指示器
+        .password-strength {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-top: -8px;
+          margin-bottom: 16px;
+          .ant-progress {
+            flex: 1;
+          }
+        }
+
+        // 登录按钮间距
+        .ant-form-item:nth-last-child(2) {
+          margin-bottom: 16px;
+        }
+
+        // 链接行间距
+        .ant-form-item:last-child {
+          margin-bottom: 0;
+        }
+      }
+
+      // 链接文字样式
+      a {
+        color: #2385bb;
+        font-size: 13px;
+        text-decoration: none;
+
+        &:hover {
+          color: #1a6fa0;
+          text-decoration: underline;
+        }
+      }
+    }
+  }
+
+  // 响应式适配（最终优化）
+  @media (max-width: 900px) {
+    flex-direction: column;
+
+    .login-left {
+      flex: 0 0 200px;
+
+      .title {
+        font-size: 28px;
+      }
+
+      .subtitleEn {
+        font-size: 16px;
+      }
+
+      .slogan {
+        font-size: 18px;
+      }
+    }
+
+    .login-right {
+      flex: 1;
+      padding: 20px;
+
+      .login-right-content {
+        padding: 24px 16px;
+        max-width: 100%;
+        box-shadow: none;
+      }
+      
+      // 移动端验证码适配
+      .captcha-img-wrap {
+        width: 80px !important; // 移动端缩小尺寸
+      }
+    }
+  }
+}
