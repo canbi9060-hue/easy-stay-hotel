@@ -1,19 +1,19 @@
-// app.js
+const path = require('path');
 const express = require('express');
-const app = express();
 const cors = require('cors');
+const { formatResponseTime } = require('./middleware/formatResponseTime');
+
+const app = express();
+
 app.use(cors());
-app.use(express.urlencoded({extended:false}));
+app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+app.use(formatResponseTime);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-
-
-// 导入总路由
 const router = require('./router');
-// 把总路由挂载到 /api 路径下
-// 此时所有接口都会再加上 /api 前缀
-app.use('/api', router); 
+app.use('/api', router);
 
-app.listen(3007,()=>{
-    console.log('express server running at http://127.0.0.1:3007')
-})
+app.listen(3007, () => {
+  console.log('express server running at http://127.0.0.1:3007');
+});

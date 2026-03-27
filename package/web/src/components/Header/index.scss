@@ -1,8 +1,55 @@
-.header {
-    text-align: center;
-    color: #fff;
-    height: 100px;
-    padding-inline: 48px;
-    line-height: 64px;
-    background-color: #f1f1f1;
-  }
+.app-header {
+  height: 84px;
+  padding: 0 28px;
+  background: linear-gradient(180deg, #e9eef5 0%, #e4ebf3 100%);
+  border-bottom: 1px solid #d5dee9;
+  box-shadow: 0 6px 18px rgba(24, 38, 61, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.app-header__user {
+  cursor: pointer;
+  padding: 8px 12px;
+  border: 2px solid rgba(24, 38, 61, 0.11);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease,
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.app-header__user:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(24, 38, 61, 0.15);
+  opacity: 0.88;
+  transform: translateY(-1px);
+}
+
+.app-header__user .ant-avatar {
+  border: 2px solid rgba(24, 38, 61, 0.16);
+  box-sizing: border-box;
+}
+
+.app-header__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.app-header__account {
+  font-size: 15px;
+  font-weight: 600;
+  color: #18263d;
+  line-height: 1.2;
+}
+
+.app-header__role {
+  font-size: 12px;
+  color: #8a97ab;
+  line-height: 1.2;
+}

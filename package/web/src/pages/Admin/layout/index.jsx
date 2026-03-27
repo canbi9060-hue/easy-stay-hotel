@@ -1,57 +1,40 @@
 import React from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useSelector, useDispatch } from 'react-redux';
-import { Layout, Menu, Avatar, Dropdown, Space } from 'antd';
-import {
-  DashboardOutlined,
-  LogoutOutlined,
-  UserOutlined
-} from '@ant-design/icons';
-import { logout } from '../../../store/slices/userSlice';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Layout, Menu } from 'antd';
+import { DashboardOutlined } from '@ant-design/icons';
 
-const { Header, Sider, Content } = Layout;
+import Header from '../../../components/Header';
+
+const { Sider, Content } = Layout;
 
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch();
-  const { userInfo } = useSelector(state => state.user);
-
-  const handleLogout = () => {
-    dispatch(logout());
-    navigate('/login');
-  };
-
-  const userMenuItems = [
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-      onClick: handleLogout
-    }
-  ];
 
   const menuItems = [
     {
       key: '/admin/dashboard',
       icon: <DashboardOutlined />,
       label: '仪表盘',
-      onClick: () => navigate('/admin/dashboard')
-    }
+      onClick: () => navigate('/admin/dashboard'),
+    },
   ];
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider theme="dark" width={200}>
-        <div style={{
-          height: 64,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: '#fff',
-          fontSize: 18,
-          fontWeight: 'bold'
-        }}>
+      <Sider theme="dark" width={220}>
+        <div
+          style={{
+            height: 84,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#fff',
+            fontSize: 18,
+            fontWeight: 'bold',
+            background: '#18263d',
+          }}
+        >
           EasyStay 管理系统
         </div>
         <Menu
@@ -63,21 +46,8 @@ export default function AdminLayout() {
         />
       </Sider>
       <Layout>
-        <Header style={{
-          padding: '0 24px',
-          background: '#fff',
-          display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center'
-        }}>
-          <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
-            <Space style={{ cursor: 'pointer' }}>
-              <Avatar icon={<UserOutlined />} />
-              <span>{userInfo?.username || '管理员'}</span>
-            </Space>
-          </Dropdown>
-        </Header>
-        <Content style={{ padding: '24px', minHeight: 280 }}>
+        <Header />
+        <Content style={{ padding: '24px', minHeight: 280, background: '#fff' }}>
           <Outlet />
         </Content>
       </Layout>

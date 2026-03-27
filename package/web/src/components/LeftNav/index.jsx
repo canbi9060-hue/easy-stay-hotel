@@ -1,47 +1,54 @@
-import React, { useState } from 'react';
-import logo from '../../assets/images/hotel.png'
-import './index.scss'
-
-import {  
-    ContainerOutlined,
-    DesktopOutlined,
-    PieChartOutlined,
+import React from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Menu } from 'antd';
+import {
+  AppstoreOutlined,
+  BankOutlined,
+  BarChartOutlined,
+  FileTextOutlined,
+  LayoutOutlined,
+  StarOutlined,
+  TeamOutlined,
+  ToolOutlined,
+  UnorderedListOutlined,
 } from '@ant-design/icons';
-import {  Menu } from 'antd';
+
+import logo from '../../assets/images/hotel.png';
+import './index.scss';
+
 const items = [
-    { key: '1', icon: <PieChartOutlined />, label: '数据统计' },
-    { key: '2', icon: <DesktopOutlined />, label: '酒店信息' },
-    { key: '3', icon: <ContainerOutlined />, label: '房型管理' },
-    { key: '4', icon: <ContainerOutlined />, label: '房间明细' },
-    { key: '5', icon: <ContainerOutlined />, label: '订单管理' },
-    { key: '6', icon: <ContainerOutlined />, label: '客户管理' },
-    { key: '7', icon: <ContainerOutlined />, label: '评价管理' },
-    { key: '8', icon: <ContainerOutlined />, label: '房务管理' },
-    { key: '9', icon: <ContainerOutlined />, label: '房态图' },
-   
+  { key: '/merchant/dashboard', icon: <BarChartOutlined />, label: '数据统计' },
+  { key: '/merchant/hotel-info', icon: <BankOutlined />, label: '酒店信息' },
+  { key: '/merchant/room-type', icon: <AppstoreOutlined />, label: '房型管理' },
+  { key: '/merchant/room-detail', icon: <UnorderedListOutlined />, label: '房间明细' },
+  { key: '/merchant/order', icon: <FileTextOutlined />, label: '订单管理' },
+  { key: '/merchant/customer', icon: <TeamOutlined />, label: '客户管理' },
+  { key: '/merchant/review', icon: <StarOutlined />, label: '评价管理' },
+  { key: '/merchant/housekeeping', icon: <ToolOutlined />, label: '房务管理' },
+  { key: '/merchant/room-status', icon: <LayoutOutlined />, label: '房态图' },
 ];
 
 export default function LeftNav() {
-    const [collapsed, setCollapsed] = useState(false);
-    
-    return (
+  const navigate = useNavigate();
+  const location = useLocation();
 
-        <div className="left-nav">
-            <div className="left-nav-header">
-                <img src={logo} alt="logo" />
-                <h1>易宿酒店管理系统</h1>
-            </div>
-            <div >
-               
-                <Menu
-                    defaultSelectedKeys={['1']}
-                    defaultOpenKeys={['sub1']}
-                    mode="inline"
-                    theme="dark"
-                    inlineCollapsed={collapsed}
-                    items={items}
-                />
-            </div>
-        </div>
-    )
+  const handleMenuClick = ({ key }) => {
+    navigate(key);
+  };
+
+  return (
+    <div className="left-nav">
+      <div className="left-nav-header">
+        <img src={logo} alt="logo" />
+        <h1>易宿酒店管理系统</h1>
+      </div>
+      <Menu
+        selectedKeys={[location.pathname]}
+        mode="inline"
+        theme="dark"
+        items={items}
+        onClick={handleMenuClick}
+      />
+    </div>
+  );
 }

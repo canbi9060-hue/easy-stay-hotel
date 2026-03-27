@@ -1,24 +1,35 @@
 .sider {
-    text-align: center;
-    line-height: 120px;
-    color: #fff;
-    background-color: #93D8FF;
-  }
-  
+  text-align: center;
+  line-height: 120px;
+  color: #fff;
+  background-color: #18263d;
+  min-height: 100vh;
+}
 
-  
-  .content {
-    text-align: center;
-    min-height: 120px;
-    line-height: 120px;
-    color: #fff;
-    background-color: #ffffff;
-  }
-  
-  .footer {
-    text-align: center;
-    color: #a19a9a;
-    background-color: #f1f1f1;
-  }
-  
- 
+.merchant-main {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1;
+  min-height: 120px;
+  color: #333;
+  background-color: #ffffff;
+}
+
+.page-container {
+  box-sizing: border-box;
+  padding: 24px;
+  font-size: 16px;
+  color: #333;
+  text-align: left;
+}
+
+.footer {
+  margin-top: auto;
+  text-align: center;
+  color: #728195;
+  background-color: #e4ebf3;
+}

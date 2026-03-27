@@ -1,7 +1,9 @@
 .left-nav {
+    background: #18263d;
+
     .left-nav-header {
         height: 100px;
-        background-color: #73C8F2;
+        background: #18263d;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -16,7 +18,38 @@
         h1 {
             font-size: 20px;
             font-weight: 600;
-            color: #333;
+            color: #e7d4ae;
         }
+    }
+
+    .ant-menu-dark,
+    .ant-menu-dark > .ant-menu {
+        background: transparent;
+        color: #c7d2e5;
+    }
+
+    .ant-menu-dark .ant-menu-item {
+        color: #c7d2e5;
+    }
+
+    .ant-menu-dark .ant-menu-item .ant-menu-item-icon,
+    .ant-menu-dark .ant-menu-item .anticon {
+        color: #c7d2e5;
+    }
+
+    .ant-menu-dark .ant-menu-item-selected,
+    .ant-menu-dark .ant-menu-item:hover,
+    .ant-menu-dark .ant-menu-item-active {
+        background-color: #4f6589;
+        color: #f1dfbd;
+    }
+
+    .ant-menu-dark .ant-menu-item-selected .ant-menu-item-icon,
+    .ant-menu-dark .ant-menu-item-selected .anticon,
+    .ant-menu-dark .ant-menu-item:hover .ant-menu-item-icon,
+    .ant-menu-dark .ant-menu-item:hover .anticon,
+    .ant-menu-dark .ant-menu-item-active .ant-menu-item-icon,
+    .ant-menu-dark .ant-menu-item-active .anticon {
+        color: #f1dfbd;
     }
 }

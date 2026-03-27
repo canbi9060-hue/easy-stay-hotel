@@ -1,0 +1,103 @@
+.profile-page {
+  background: linear-gradient(180deg, #f7f9fc 0%, #f2f6fb 100%);
+}
+
+.profile-page__card {
+  border: none;
+  border-radius: 24px;
+  box-shadow: 0 12px 32px rgba(24, 38, 61, 0.08);
+  overflow: hidden;
+}
+
+.profile-page__overview .ant-card-body {
+  padding: 28px;
+}
+
+.profile-page__avatar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.profile-page__account {
+  font-size: 24px;
+  font-weight: 700;
+  color: #18263d;
+}
+
+.profile-page__role {
+  font-size: 14px;
+  color: #7d8da5;
+}
+
+.profile-page__upload-btn {
+  height: 44px;
+  border-radius: 12px;
+}
+
+.profile-page__overview .ant-upload {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.profile-page__overview .ant-upload .ant-btn {
+  min-width: 160px;
+}
+
+.profile-page__card-tip {
+  font-size: 12px;
+  color: #8a97ab;
+}
+
+.profile-page__actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 8px;
+}
+
+.profile-page__actions .ant-btn {
+  min-width: 132px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.profile-page__details {
+  margin-top: 24px;
+}
+
+.profile-page__details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.profile-page__detail-item {
+  padding: 18px 18px 16px;
+  border: 1px solid #edf1f7;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbfe 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.profile-page__detail-label {
+  font-size: 12px;
+  color: #8a97ab;
+}
+
+.profile-page__detail-value {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #18263d;
+  word-break: break-word;
+}
+
+@media (max-width: 992px) {
+  .profile-page__details-grid {
+    grid-template-columns: 1fr;
+  }
+}

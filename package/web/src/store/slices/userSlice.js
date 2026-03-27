@@ -1,7 +1,7 @@
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { createAsyncThunk, createSlice } from '@reduxjs/toolkit';
+
 import { getUserInfoAPI } from '../../utils/request';
 
-// 异步获取用户信息
 export const fetchUserInfo = createAsyncThunk(
   'user/fetchUserInfo',
   async (_, { rejectWithValue }) => {
@@ -19,7 +19,7 @@ const userSlice = createSlice({
   initialState: {
     userInfo: null,
     token: localStorage.getItem('token') || '',
-    initialized: false, // 新增：标记是否已初始化
+    initialized: false,
   },
   reducers: {
     setToken: (state, action) => {
@@ -46,10 +46,9 @@ const userSlice = createSlice({
         state.initialized = true;
       })
       .addCase(fetchUserInfo.rejected, (state) => {
-        // token 过期或无效，清除登录状态
         state.token = '';
         state.userInfo = null;
-        state.initialized = true; // 标记初始化完成（虽然失败）
+        state.initialized = true;
         localStorage.removeItem('token');
       });
   },
