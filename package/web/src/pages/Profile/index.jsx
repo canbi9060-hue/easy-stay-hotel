@@ -22,13 +22,15 @@ import './index.scss';
 const roleLabelMap = {
   admin: '管理员',
   merchant: '商家',
-  user: '普通用户',
+  user: '用户',
 };
 
 const statusLabelMap = {
   0: '已禁用',
   1: '正常',
 };
+
+const getErrorMessage = (error, fallback) => error?.errorMsg || error?.message || fallback;
 
 const formatDisplayValue = (value, fallback = '-') => {
   if (value === null || value === undefined) {
@@ -51,26 +53,24 @@ export default function Profile() {
   }, [dispatch]);
 
   useEffect(() => {
-    if (userInfo) {
-      form.setFieldsValue({
-        name: userInfo.name || '',
-        phone: userInfo.phone || '',
-        email: userInfo.email || '',
-      });
-    }
+    form.setFieldsValue({
+      name: userInfo?.name || '',
+      phone: userInfo?.phone || '',
+      email: userInfo?.email || '',
+    });
   }, [form, userInfo]);
 
   const avatarSrc = useMemo(
     () => getFileUrl(userInfo?.avatar) || defaultAvatar,
     [userInfo?.avatar]
   );
-  const roleLabel = roleLabelMap[userInfo?.role] || '未知身份';
+  const roleLabel = roleLabelMap[userInfo?.role] || '未知';
   const accountInfoList = useMemo(
     () => [
-      { label: '身份', value: roleLabel },
-      { label: '账号状态', value: statusLabelMap[Number(userInfo?.status)] || '未知状态' },
+      { label: '角色', value: roleLabel },
+      { label: '状态', value: statusLabelMap[Number(userInfo?.status)] || '未知' },
       { label: '创建时间', value: formatDisplayValue(userInfo?.createTime) },
-      { label: '最后更新', value: formatDisplayValue(userInfo?.updateTime) },
+      { label: '更新时间', value: formatDisplayValue(userInfo?.updateTime) },
     ],
     [roleLabel, userInfo]
   );
@@ -79,14 +79,16 @@ export default function Profile() {
     try {
       setSaving(true);
       const res = await updateProfileAPI(values);
-      dispatch(setUserInfo(res.data));
-      message.success('个人资料已更新');
+      dispatch(setUserInfo(res?.data || {}));
+      message.success('资料更新成功。');
     } catch (error) {
-      const { field, errorMsg } = error;
+      const field = error?.field;
+      const errorMsg = getErrorMessage(error, '更新资料失败。');
+
       if (field) {
         form.setFields([{ name: field, errors: [errorMsg] }]);
       } else {
-        message.error(errorMsg || '更新失败，请稍后重试');
+        message.error(errorMsg);
       }
     } finally {
       setSaving(false);
@@ -94,15 +96,13 @@ export default function Profile() {
   };
 
   const beforeUpload = (file) => {
-    const isImage = file.type.startsWith('image/');
-    if (!isImage) {
-      message.error('仅支持上传图片文件');
+    if (!file?.type?.startsWith('image/')) {
+      message.error('仅支持上传图片文件。');
       return Upload.LIST_IGNORE;
     }
 
-    const isLt2M = file.size / 1024 / 1024 < 2;
-    if (!isLt2M) {
-      message.error('头像图片不能超过 2MB');
+    if (file.size / 1024 / 1024 >= 2) {
+      message.error('头像图片不能超过 2MB。');
       return Upload.LIST_IGNORE;
     }
 
@@ -116,11 +116,11 @@ export default function Profile() {
     try {
       setAvatarUploading(true);
       const res = await uploadAvatarAPI(formData);
-      dispatch(setUserInfo(res.data));
-      message.success('头像更新成功');
-      onSuccess?.(res.data, file);
+      dispatch(setUserInfo(res?.data || {}));
+      message.success('头像更新成功。');
+      onSuccess?.(res?.data, file);
     } catch (error) {
-      message.error(error.errorMsg || '头像上传失败');
+      message.error(getErrorMessage(error, '头像上传失败。'));
       onError?.(error);
     } finally {
       setAvatarUploading(false);
@@ -135,7 +135,6 @@ export default function Profile() {
             <div className="profile-page__avatar-wrap">
               <Avatar src={avatarSrc} size={118} />
               <div className="profile-page__account">{userInfo?.username || '未登录'}</div>
-             
             </div>
 
             <Upload
@@ -160,36 +159,24 @@ export default function Profile() {
           <Card
             className="profile-page__card"
             title="编辑资料"
-            extra={<span className="profile-page__card-tip">保存后会立即同步到右上角</span>}
+            extra={<span className="profile-page__card-tip">保存后会立即同步到页面头部。</span>}
           >
             <Form form={form} layout="vertical" onFinish={handleSave}>
               <Row gutter={18}>
                 <Col xs={24} md={12}>
-                  <Form.Item
-                    label="姓名"
-                    name="name"
-                    rules={[{ validator: validateProfileName }]}
-                  >
+                  <Form.Item label="姓名" name="name" rules={[{ validator: validateProfileName }]}>
                     <Input prefix={<UserOutlined />} placeholder="请输入姓名" maxLength={50} />
                   </Form.Item>
                 </Col>
 
                 <Col xs={24} md={12}>
-                  <Form.Item
-                    label="手机号"
-                    name="phone"
-                    rules={[{ validator: validatePhone }]}
-                  >
+                  <Form.Item label="手机号" name="phone" rules={[{ validator: validatePhone }]}>
                     <Input prefix={<PhoneOutlined />} placeholder="请输入手机号" maxLength={11} />
                   </Form.Item>
                 </Col>
 
                 <Col xs={24}>
-                  <Form.Item
-                    label="邮箱"
-                    name="email"
-                    rules={[{ validator: validateEmail }]}
-                  >
+                  <Form.Item label="邮箱" name="email" rules={[{ validator: validateEmail }]}>
                     <Input prefix={<MailOutlined />} placeholder="请输入邮箱" />
                   </Form.Item>
                 </Col>

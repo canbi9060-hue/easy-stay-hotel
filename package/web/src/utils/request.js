@@ -11,9 +11,11 @@ const request = axios.create({
 request.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
+
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -22,30 +24,31 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response) => {
     const { data } = response;
-    if (data.code === 0) {
+
+    if (data?.code === 0) {
       return data;
     }
 
     return Promise.reject({
-      errorMsg: data.msg || '请求失败',
-      field: data.data?.field || '',
-      errorCode: data.code || 400,
-      errorType: data.errorType || 'UNKNOWN_ERROR',
+      errorMsg: data?.msg || 'Request failed.',
+      field: data?.data?.field || '',
+      errorCode: data?.code || 400,
+      errorType: data?.errorType || 'UNKNOWN_ERROR',
       response,
     });
   },
   (error) => {
-    let errorMsg = '网络异常，请稍后重试';
+    let errorMsg = 'Network error. Please try again later.';
     let field = '';
     let errorCode = 500;
     let errorType = 'SERVER_ERROR';
 
     if (error.response) {
       const res = error.response.data;
-      errorMsg = res.msg || `请求失败（状态码：${error.response.status}）`;
-      field = res.data?.field || '';
-      errorCode = res.code || error.response.status;
-      errorType = res.errorType || 'UNKNOWN_ERROR';
+      errorMsg = res?.msg || `Request failed (status: ${error.response.status}).`;
+      field = res?.data?.field || '';
+      errorCode = res?.code || error.response.status;
+      errorType = res?.errorType || 'UNKNOWN_ERROR';
     } else if (error.message) {
       errorMsg = error.message;
     }
@@ -86,5 +89,9 @@ export const uploadAvatarAPI = (formData) =>
       'Content-Type': 'multipart/form-data',
     },
   });
+
+export const getMerchantHotelProfileAPI = () => request.get('/merchant/hotel-profile');
+export const updateMerchantHotelProfileAPI = (data) => request.put('/merchant/hotel-profile', data);
+export const submitMerchantHotelProfileReviewAPI = () => request.post('/merchant/hotel-profile/submit-review');
 
 export default request;

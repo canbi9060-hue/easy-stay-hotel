@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Avatar, Dropdown, Space } from 'antd';
@@ -12,7 +12,7 @@ import './index.scss';
 const roleLabelMap = {
   admin: '管理员',
   merchant: '商家',
-  user: '普通用户',
+  user: '用户',
 };
 
 export default function Header() {
@@ -21,12 +21,27 @@ export default function Header() {
   const location = useLocation();
   const { userInfo } = useSelector((state) => state.user);
 
-  const currentSection = location.pathname.split('/')[1];
-  const rolePrefix = userInfo?.role
-    ? `/${userInfo.role}`
-    : `/${currentSection || 'merchant'}`;
+  const currentSection = location.pathname.split('/')[1] || 'merchant';
+  const rolePrefix = userInfo?.role ? `/${userInfo.role}` : `/${currentSection}`;
   const avatarSrc = getFileUrl(userInfo?.avatar) || defaultAvatar;
-  const roleLabel = roleLabelMap[userInfo?.role] || '账号信息';
+  const roleLabel = roleLabelMap[userInfo?.role] || '账号';
+  const username = userInfo?.username || '未登录';
+
+  const menuItems = useMemo(
+    () => [
+      {
+        key: 'profile',
+        icon: <SettingOutlined />,
+        label: '个人中心',
+      },
+      {
+        key: 'logout',
+        icon: <LogoutOutlined />,
+        label: '退出登录',
+      },
+    ],
+    []
+  );
 
   const handleMenuClick = ({ key }) => {
     if (key === 'profile') {
@@ -40,19 +55,6 @@ export default function Header() {
     }
   };
 
-  const menuItems = [
-    {
-      key: 'profile',
-      icon: <SettingOutlined />,
-      label: '个人中心',
-    },
-    {
-      key: 'logout',
-      icon: <LogoutOutlined />,
-      label: '退出登录',
-    },
-  ];
-
   return (
     <div className="app-header">
       <Dropdown
@@ -63,7 +65,7 @@ export default function Header() {
         <Space className="app-header__user" size={12}>
           <Avatar src={avatarSrc} size={42} />
           <div className="app-header__meta">
-            <span className="app-header__account">{userInfo?.username || '未登录'}</span>
+            <span className="app-header__account">{username}</span>
             <span className="app-header__role">{roleLabel}</span>
           </div>
         </Space>
