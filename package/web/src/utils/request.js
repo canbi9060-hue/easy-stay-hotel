@@ -92,6 +92,25 @@ export const uploadAvatarAPI = (formData) =>
 
 export const getMerchantHotelProfileAPI = () => request.get('/merchant/hotel-profile');
 export const updateMerchantHotelProfileAPI = (data) => request.put('/merchant/hotel-profile', data);
-export const submitMerchantHotelProfileReviewAPI = () => request.post('/merchant/hotel-profile/submit-review');
+export const submitMerchantHotelProfileReviewAPI = (data) => request.post('/merchant/hotel-profile/submit-review', data);
+export const getMerchantHotelImagesAPI = () => request.get('/merchant/hotel-images');
+export const uploadMerchantHotelImageAPI = (formData, onUploadProgress) =>
+  request.post('/merchant/hotel-images/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    onUploadProgress,
+  });
+export const deleteMerchantHotelImageAPI = (id) => request.delete(`/merchant/hotel-images/${id}`);
+export const sortMerchantHotelImagesAPI = (data) => request.put('/merchant/hotel-images/sort', data);
+export const getMerchantHotelCertificatesAPI = () => request.get('/merchant/hotel-certificates');
+export const uploadMerchantHotelCertificateAPI = (formData, onUploadProgress) =>
+  request.post('/merchant/hotel-certificates/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    onUploadProgress,
+  });
+export const deleteMerchantHotelCertificateAPI = (id) => request.delete(`/merchant/hotel-certificates/${id}`);
 
 export default request;

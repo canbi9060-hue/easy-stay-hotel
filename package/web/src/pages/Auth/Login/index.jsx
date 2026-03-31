@@ -12,7 +12,7 @@ import {
   calculatePasswordStrength,
   getPasswordStrengthInfo,
   refreshCaptcha
-} from "../../../utils/validateRules";
+} from "../../../utils/form";
 
 import { captchaAPI, loginAPI } from "../../../utils/request";
 import { setToken, fetchUserInfo } from "../../../store/slices/userSlice";

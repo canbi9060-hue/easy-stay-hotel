@@ -1,23 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
-  Card,
-  Checkbox,
-  Col,
-  Divider,
   Form,
-  Input,
   Modal,
-  Radio,
-  Row,
-  Select,
   Spin,
   Tag,
   message,
 } from 'antd';
-import { ClockCircleFilled, EnvironmentOutlined } from '@ant-design/icons';
 import {
+  getFileUrl,
   getMerchantHotelProfileAPI,
   submitMerchantHotelProfileReviewAPI,
   updateMerchantHotelProfileAPI,
@@ -29,6 +21,7 @@ import {
   countryOptions,
   destroyMapInstance,
   emptyHotelProfile,
+  facilityCategoryList,
   fetchDistrictOptions,
   formatAddressText,
   geocodeAddress,
@@ -38,6 +31,8 @@ import {
   isAmapRecoverableError,
   loadAmapScript,
   locateByIP,
+  MAX_CUSTOM_FACILITY_COUNT,
+  MAX_CUSTOM_FACILITY_LENGTH,
   normalizeHotelProfile,
   renderMapInstance,
   reverseGeocodeCoordinates,
@@ -46,12 +41,28 @@ import {
   retryAmapWithLegacyVersion,
   starLevelOptions,
 } from '../../../utils/hotelInfo';
-import { validateEmail, validatePhone } from '../../../utils/validateRules';
+import { validateEmail, validatePhone } from '../../../utils/form';
+import BasicInfoModule from './modules/BasicInfoModule';
+import CertificatesModule from './modules/CertificatesModule';
+import FacilitiesModule from './modules/FacilitiesModule';
+import FormActions from './modules/FormActions';
+import ImagesModule from './modules/ImagesModule';
+import PlaceholderPanel from './modules/PlaceholderPanel';
+import useHotelCertificatesManager from './hooks/useHotelCertificatesManager';
+import useHotelImagesManager from './hooks/useHotelImagesManager';
+import {
+  certificateGroups,
+  hotelImageGroups,
+  hotelInfoPlaceholderCopy,
+  hotelInfoTabs,
+} from './modules/constants';
 import './index.scss';
 
 const getErrorMessage = (error, fallback) => error?.errorMsg || error?.message || fallback;
 const addressDraftStorageKey = 'merchant_hotel_address_draft';
+const hotelInfoLoadMessageKey = 'merchant-hotel-info-load-error';
 const defaultCenterCoordinates = { longitude: 116.397428, latitude: 39.90923 };
+const reviewRequiredCertificateGroupKeys = ['business_license', 'legal_person_front', 'legal_person_back', 'special_permit'];
 const isDefaultCenterCoordinates = (coordinates) => {
   if (!coordinates) return false;
   const latitude = Number(coordinates.latitude);
@@ -99,6 +110,9 @@ export default function HotelInfo() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState(hotelInfoTabs[0].key);
+  const [customFacilityInput, setCustomFacilityInput] = useState('');
+  const [customFacilities, setCustomFacilities] = useState([]);
   const [reviewStatus, setReviewStatus] = useState(emptyHotelProfile.reviewStatus);
   const [provinceOptions, setProvinceOptions] = useState([]);
   const [cityOptions, setCityOptions] = useState([]);
@@ -132,6 +146,46 @@ export default function HotelInfo() {
   const draftRestoredRef = useRef(false);
   const hasManualSelectionRef = useRef(false);
 
+  const {
+    hotelImages,
+    uploadingByGroup,
+    failedUploadByGroup,
+    imageLoadError,
+    deletingImageIds,
+    sortingByGroup,
+    dragOverTargetByGroup,
+    imagePreview,
+    beforeHotelImageUpload,
+    uploadHotelImage,
+    handleDeleteHotelImage,
+    handleImageDrop,
+    handleImageDragStart,
+    handleImageDragOver,
+    handleImageDragLeave,
+    handleImageDragEnd,
+    handleImagePreview,
+    closeImagePreview,
+    loadHotelImages,
+    handleRetryLoadImages,
+    resetHotelImagesState,
+  } = useHotelImagesManager({ getErrorMessage });
+  const {
+    hotelCertificates,
+    uploadingByGroup: certificateUploadingByGroup,
+    failedUploadByGroup: certificateFailedUploadByGroup,
+    certificateLoadError,
+    deletingCertificateIds,
+    certificatePreview,
+    beforeCertificateUpload,
+    uploadHotelCertificate,
+    handleDeleteHotelCertificate,
+    handleCertificatePreview,
+    closeCertificatePreview,
+    loadHotelCertificates,
+    handleRetryLoadCertificates,
+    resetHotelCertificatesState,
+  } = useHotelCertificatesManager({ getErrorMessage });
+
   const previewBindings = useMemo(
     () => ({ mapRef: previewMapRef, markerRef: previewMarkerRef, clickHandlerRef: previewClickHandlerRef, dragHandlerRef: previewDragHandlerRef }),
     []
@@ -147,7 +201,17 @@ export default function HotelInfo() {
   const cityValue = Form.useWatch(['address', 'city'], form);
   const districtValue = Form.useWatch(['address', 'district'], form);
   const detailValue = Form.useWatch(['address', 'detail'], form);
-  const reviewStatusMeta = reviewStatusMap[reviewStatus] || reviewStatusMap.pending;
+  const reviewStatusMeta = reviewStatusMap[reviewStatus] || reviewStatusMap.incomplete;
+  const isReviewing = reviewStatus === 'reviewing';
+  const isCertificatesTab = activeTab === 'certificates';
+  const hasRequiredCertificates = reviewRequiredCertificateGroupKeys.every((groupKey) => (hotelCertificates[groupKey] || []).length > 0);
+  const hasCertificateUploading = Object.values(certificateUploadingByGroup).some(Boolean);
+  const hasCertificateDeleting = Object.values(deletingCertificateIds).some(Boolean);
+  const canSubmitReview = !isReviewing && hasRequiredCertificates && !hasCertificateUploading && !hasCertificateDeleting;
+  const tabOrder = useMemo(() => hotelInfoTabs.map((item) => item.key), []);
+  const activeTabIndex = tabOrder.indexOf(activeTab);
+  const hasPrevTab = activeTabIndex > 0;
+  const hasNextTab = activeTabIndex >= 0 && activeTabIndex < tabOrder.length - 1;
 
   const addressTextInput = useMemo(() => hasAddressTextInput(addressValue), [addressValue]);
   const currentCoordinates = useMemo(() => {
@@ -316,7 +380,7 @@ export default function HotelInfo() {
 
     const locateTaskId = ++locateTaskIdRef.current;
     setAddressLocateError('');
-    setMapStatusText(detailText ? '正在根据详细地址定位...' : '正在定位到行政区中心...');
+    setMapStatusText('正在根据详细地址定位...');
 
     try {
       if (detailText) {
@@ -371,6 +435,7 @@ export default function HotelInfo() {
   }, [form, mapReady]);
 
   const applyPointSelection = useCallback(async (coordinates) => {
+    if (isReviewing) return;
     hasManualSelectionRef.current = true;
     const requestId = ++pointPickRequestIdRef.current;
     setPointPickError('');
@@ -430,11 +495,12 @@ export default function HotelInfo() {
     } finally {
       if (requestId === pointPickRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 1200);
     }
-  }, [form, refreshRegionOptions]);
+  }, [form, isReviewing, refreshRegionOptions]);
 
   const normalizeAndApplyProfile = useCallback(async (profileData) => {
     const profile = normalizeHotelProfile(profileData);
     form.setFieldsValue(profile);
+    setCustomFacilities(profile.customFacilities || []);
     setReviewStatus(profile.reviewStatus || emptyHotelProfile.reviewStatus);
     await refreshRegionOptions(profile.address);
   }, [form, refreshRegionOptions]);
@@ -464,16 +530,33 @@ export default function HotelInfo() {
     (async () => {
       try {
         setLoading(true);
-        await normalizeAndApplyProfile((await getMerchantHotelProfileAPI())?.data);
+        const profileRes = await getMerchantHotelProfileAPI();
+        await normalizeAndApplyProfile(profileRes?.data);
+        await loadHotelImages({ notify: false });
+        await loadHotelCertificates({ notify: false });
       } catch (error) {
         form.setFieldsValue(emptyHotelProfile);
+        setCustomFacilities(emptyHotelProfile.customFacilities || []);
         setReviewStatus(emptyHotelProfile.reviewStatus);
-        message.error(getErrorMessage(error, '获取酒店资料失败。'));
+        resetHotelImagesState();
+        resetHotelCertificatesState();
+        message.open({
+          key: hotelInfoLoadMessageKey,
+          type: 'error',
+          content: getErrorMessage(error, '获取酒店资料失败，请稍后重试。'),
+        });
       } finally {
         setLoading(false);
       }
     })();
-  }, [form, normalizeAndApplyProfile]);
+  }, [
+    form,
+    loadHotelCertificates,
+    loadHotelImages,
+    normalizeAndApplyProfile,
+    resetHotelCertificatesState,
+    resetHotelImagesState,
+  ]);
 
   useEffect(() => {
     if (loading) return;
@@ -516,7 +599,7 @@ export default function HotelInfo() {
   );
 
   useEffect(() => {
-    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current || !window.AMap) return;
+    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current || !window.AMap || isReviewing) return;
     ipLocateTriedRef.current = true;
 
     locateByIP(window.AMap)
@@ -600,17 +683,28 @@ export default function HotelInfo() {
       .finally(() => {
         window.setTimeout(() => setMapStatusText(''), 1200);
       });
-  }, [form, hasUsableUserLocation, loading, mapReady, refreshRegionOptions]);
+  }, [form, hasUsableUserLocation, isReviewing, loading, mapReady, refreshRegionOptions]);
 
   useEffect(() => {
-    if (!mapReady || !window.AMap || !previewMapContainerRef.current || mapLoadError) return;
-    try {
-      renderMapInstance(window.AMap, previewMapContainerRef.current, displayCoordinates, previewBindings, applyPointSelection);
-    } catch (error) {
-      if (isAmapRecoverableError(error)) fallbackToLegacyMap();
-      else setMapLoadError(getErrorMessage(error, '地图预览渲染失败。'));
+    if (activeTab !== 'basic') {
+      destroyMapInstance(previewBindings);
+      return;
     }
-  }, [applyPointSelection, displayCoordinates, fallbackToLegacyMap, mapLoadError, mapReady, previewBindings]);
+    if (!mapReady || !window.AMap || !previewMapContainerRef.current || mapLoadError) return;
+    const timer = window.setTimeout(() => {
+      try {
+        renderMapInstance(window.AMap, previewMapContainerRef.current, displayCoordinates, previewBindings, applyPointSelection);
+        previewMapRef.current?.resize?.();
+        if (displayCoordinates) {
+          previewMapRef.current?.setCenter?.([displayCoordinates.longitude, displayCoordinates.latitude]);
+        }
+      } catch (error) {
+        if (isAmapRecoverableError(error)) fallbackToLegacyMap();
+        else setMapLoadError(getErrorMessage(error, '地图预览渲染失败。'));
+      }
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [activeTab, applyPointSelection, displayCoordinates, fallbackToLegacyMap, mapLoadError, mapReady, previewBindings]);
 
   useEffect(() => {
     if (!mapModalOpen || !mapReady || !window.AMap || !modalMapContainerRef.current || mapLoadError) return;
@@ -743,6 +837,7 @@ export default function HotelInfo() {
   };
 
   const handleManualAddressLocate = async () => {
+    if (isReviewing) return;
     if (!hasAddressInput(addressValue)) {
       message.warning('请先填写省市区或详细地址。');
       return;
@@ -751,20 +846,113 @@ export default function HotelInfo() {
   };
 
   const handleSaveAddressDraft = () => {
+    if (isReviewing) return;
     const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
     saveAddressDraftToSession(latestAddress, { silent: false, mode: 'manual' });
   };
 
-  const persistProfile = async (submitReview = false) => {
-    const values = normalizeHotelProfile(await form.validateFields());
+  const handleAddCustomFacility = () => {
+    const normalizedName = String(customFacilityInput || '').trim().slice(0, MAX_CUSTOM_FACILITY_LENGTH);
+    if (!normalizedName) {
+      message.warning('请输入设施名称后再添加。');
+      return;
+    }
+
+    if (customFacilities.includes(normalizedName)) {
+      message.warning('该自定义设施已存在。');
+      return;
+    }
+    if (customFacilities.length >= MAX_CUSTOM_FACILITY_COUNT) {
+      message.warning('最多可添加 ' + MAX_CUSTOM_FACILITY_COUNT + ' 项自定义设施。');
+      return;
+    }
+
+    setCustomFacilities((prev) => [...prev, normalizedName]);
+    setCustomFacilityInput('');
+  };
+
+  const handleRemoveCustomFacility = (facilityName) => {
+    setCustomFacilities((prev) => prev.filter((item) => item !== facilityName));
+  };
+
+  const saveAllProfile = useCallback(async () => {
+    const formValues = form.getFieldsValue(true);
+    const values = normalizeHotelProfile({
+      ...formValues,
+      customFacilities,
+    });
     const saved = await updateMerchantHotelProfileAPI(values);
     await normalizeAndApplyProfile(saved?.data);
     window.sessionStorage.removeItem(addressDraftStorageKey);
-    if (submitReview) {
-      const submitted = await submitMerchantHotelProfileReviewAPI();
-      await normalizeAndApplyProfile(submitted?.data);
+    return values;
+  }, [customFacilities, form, normalizeAndApplyProfile]);
+
+  const goToTabByIndex = useCallback((targetIndex) => {
+    if (targetIndex < 0 || targetIndex >= tabOrder.length) return;
+    setActiveTab(tabOrder[targetIndex]);
+  }, [tabOrder]);
+
+  const handleGoPrevTab = useCallback(() => {
+    if (!hasPrevTab) return;
+    goToTabByIndex(activeTabIndex - 1);
+  }, [activeTabIndex, goToTabByIndex, hasPrevTab]);
+
+  const handleGoNextTab = useCallback(async () => {
+    if (!hasNextTab) return;
+    goToTabByIndex(activeTabIndex + 1);
+  }, [activeTabIndex, goToTabByIndex, hasNextTab]);
+
+  const handleSaveProfile = async () => {
+    if (isReviewing) return;
+    try {
+      setSaving(true);
+      await saveAllProfile();
+      message.success('酒店资料保存成功。');
+    } catch (error) {
+      message.error(getErrorMessage(error, '保存酒店资料失败。'));
+    } finally {
+      setSaving(false);
     }
   };
+
+  const handleSubmitProfile = async () => {
+    if (!canSubmitReview || isReviewing) return;
+    try {
+      setSubmitting(true);
+      let values;
+      try {
+        values = await saveAllProfile();
+      } catch (error) {
+        message.error(getErrorMessage(error, '保存酒店资料失败。'));
+        return;
+      }
+      const submitted = await submitMerchantHotelProfileReviewAPI(values);
+      await normalizeAndApplyProfile(submitted?.data);
+      message.success('酒店资料已提交审核。');
+    } catch (error) {
+      message.error(getErrorMessage(error, '提交酒店资料失败。'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formActionsNode = (
+    <FormActions
+      saving={saving}
+      submitting={submitting}
+      onSave={handleSaveProfile}
+      onSubmit={handleSubmitProfile}
+      onPrev={handleGoPrevTab}
+      onNext={handleGoNextTab}
+      showPrev={hasPrevTab}
+      showNext={hasNextTab}
+      prevDisabled={saving || submitting}
+      nextDisabled={saving || submitting}
+      showSubmit={isCertificatesTab}
+      saveDisabled={isReviewing || submitting}
+      submitDisabled={!canSubmitReview || saving}
+    />
+  );
 
   const renderMapAlerts = () => (
     <>
@@ -774,6 +962,8 @@ export default function HotelInfo() {
       {pointPickError ? <Alert type="warning" showIcon message="根据地图选点回填地址失败" description={pointPickError} style={{ marginBottom: 12 }} /> : null}
     </>
   );
+
+  const activeTabMeta = hotelInfoTabs.find((item) => item.key === activeTab) || hotelInfoTabs[0];
 
   if (loading) {
     return <div className="hotel-info__loading"><Spin description="正在加载酒店资料..." /></div>;
@@ -789,112 +979,113 @@ export default function HotelInfo() {
         <Tag color={reviewStatusMeta.color} className="hotel-info__status-tag">{reviewStatusMeta.text}</Tag>
       </div>
 
-      <Form form={form} layout="vertical" initialValues={emptyHotelProfile} className="hotel-info__form">
-        <Row gutter={[24, 24]}>
-          <Col xs={24} xl={16}>
-            <Card className="hotel-info__section-card">
-              <Row gutter={[20, 20]}>
-                <Col xs={24} md={12}>
-                  <Form.Item label="住宿类型" name="accommodationType" className="hotel-info__label-strong">
-                    <Radio.Group optionType="button" buttonStyle="solid" className="hotel-info__radio-group">
-                      {accommodationTypeOptions.map((option) => (
-                        <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>
-                      ))}
-                    </Radio.Group>
-                  </Form.Item>
-                </Col>
-                <Col xs={24} md={12}>
-                  <Form.Item label="星级" name="starLevel" className="hotel-info__label-strong">
-                    <Select options={starLevelOptions} placeholder="请选择星级" />
-                  </Form.Item>
-                </Col>
-                <Col xs={24}>
-                  <Form.Item className="hotel-info__label-strong hotel-info__label-no-required-mark" label="酒店名称" name="hotelName" rules={[{ required: true, message: '请输入酒店名称。' }]}>
-                    <Input maxLength={100} placeholder="请输入酒店名称" />
-                  </Form.Item>
-                </Col>
-
-                <Col xs={24}>
-                  <div className="hotel-info__section-title">酒店地址</div>
-                  <Row gutter={[12, 12]}>
-                    <Col xs={24} sm={12} lg={6}><Form.Item label="国家 / 地区" name={['address', 'country']}><Select options={countryOptions} disabled /></Form.Item></Col>
-                    <Col xs={24} sm={12} lg={6}><Form.Item label="省份" name={['address', 'province']} rules={[{ required: true, message: '请选择省份。' }]}><Select options={provinceOptions} placeholder="请选择省份" loading={regionLoading} onChange={handleProvinceChange} /></Form.Item></Col>
-                    <Col xs={24} sm={12} lg={6}><Form.Item label="城市" name={['address', 'city']} rules={[{ required: true, message: '请选择城市。' }]}><Select options={cityOptions} placeholder="请选择城市" loading={regionLoading} disabled={!addressValue?.province} onChange={handleCityChange} /></Form.Item></Col>
-                    <Col xs={24} sm={12} lg={6}><Form.Item label="区县" name={['address', 'district']} rules={[{ required: true, message: '请选择区县。' }]}><Select options={districtOptions} placeholder="请选择区县" loading={regionLoading} disabled={!addressValue?.city} onChange={handleDistrictChange} /></Form.Item></Col>
-                  </Row>
-                  <Form.Item name={['address', 'detail']} rules={[{ required: true, message: '请输入详细地址。' }]}>
-                    <Input maxLength={200} placeholder="请输入详细地址" prefix={<EnvironmentOutlined />} onChange={handleDetailInputChange} />
-                  </Form.Item>
-
-                  {renderMapAlerts()}
-
-                  <div className="hotel-info__map-shell">
-                    <div className="hotel-info__map-preview" ref={previewMapContainerRef} />
-                    <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft}>暂存定位</Button>
-                    <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate}>按输入地址定位</Button>
-                    <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)}>展开地图</Button>
-                    {mapRetrying || mapStatusText ? <div className="hotel-info__map-loading">{mapRetrying ? '正在切换兼容地图内核...' : mapStatusText}</div> : null}
-                  </div>
-                </Col>
-              </Row>
-            </Card>
-          </Col>
-          <Col xs={24} xl={8}>
-            <div className="hotel-info__aside">
-              <Card className="hotel-info__section-card hotel-info__info-card" title="联系方式">
-                <Form.Item label="联系电话" name="contactPhone" rules={[{ validator: validatePhone }]}>
-                  <Input placeholder="请输入联系电话" />
-                </Form.Item>
-                <Form.Item label="联系邮箱" name="contactEmail" rules={[{ validator: validateEmail }]}>
-                  <Input placeholder="请输入联系邮箱" />
-                </Form.Item>
-              </Card>
-
-              <Card className="hotel-info__section-card hotel-info__info-card" title={<><ClockCircleFilled />运营规则</>}>
-                <div className="hotel-info__rule-header">
-                  <span>营业时间</span>
-                  <Form.Item name={['operationRules', 'isOpen24Hours']} valuePropName="checked" noStyle>
-                    <Checkbox onChange={handleOpen24HoursChange}>24小时</Checkbox>
-                  </Form.Item>
-                </div>
-                <Row gutter={10}>
-                  <Col span={12}>
-                    <Form.Item name={['operationRules', 'businessStartTime']} noStyle={false}>
-                      <Input type="time" disabled={Boolean(isOpen24Hours)} />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name={['operationRules', 'businessEndTime']} noStyle={false}>
-                      <Input type="time" disabled={Boolean(isOpen24Hours)} />
-                    </Form.Item>
-                  </Col>
-                </Row>
-
-                <Divider style={{ margin: '14px 0' }} />
-
-                <div className="hotel-info__rule-item">
-                  <span>入住规则</span>
-                  <Form.Item name={['operationRules', 'checkInTime']} style={{ marginBottom: 0 }}>
-                    <Input type="time" />
-                  </Form.Item>
-                </div>
-
-                <div className="hotel-info__rule-item">
-                  <span>退房规则</span>
-                  <Form.Item name={['operationRules', 'checkOutTime']} style={{ marginBottom: 0 }}>
-                    <Input type="time" />
-                  </Form.Item>
-                </div>
-              </Card>
-
-            </div>
-          </Col>
-        </Row>
-
-        <div className="hotel-info__actions">
-          <Button onClick={async () => { try { setSaving(true); await persistProfile(false); message.success('酒店资料保存成功。'); } catch (error) { message.error(getErrorMessage(error, '保存酒店资料失败。')); } finally { setSaving(false); } }} loading={saving}>保存</Button>
-          <Button type="primary" onClick={async () => { try { setSubmitting(true); await persistProfile(true); message.success('酒店资料已提交审核。'); } catch (error) { message.error(getErrorMessage(error, '提交酒店资料失败。')); } finally { setSubmitting(false); } }} loading={submitting}>提交审核</Button>
+      <Form form={form} layout="vertical" initialValues={emptyHotelProfile} className="hotel-info__form" disabled={isReviewing}>
+        <div className="hotel-info__tabs" role="tablist" aria-label="酒店资料分栏">
+          {hotelInfoTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              className={`hotel-info__tab ${activeTab === tab.key ? 'is-active' : ''}`}
+              onClick={() => setActiveTab(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
+        {activeTab === 'basic'
+          ? (
+            <BasicInfoModule
+              accommodationTypeOptions={accommodationTypeOptions}
+              starLevelOptions={starLevelOptions}
+              countryOptions={countryOptions}
+              provinceOptions={provinceOptions}
+              cityOptions={cityOptions}
+              districtOptions={districtOptions}
+              regionLoading={regionLoading}
+              addressValue={addressValue}
+              handleProvinceChange={handleProvinceChange}
+              handleCityChange={handleCityChange}
+              handleDistrictChange={handleDistrictChange}
+              handleDetailInputChange={handleDetailInputChange}
+              renderMapAlerts={renderMapAlerts}
+              previewMapContainerRef={previewMapContainerRef}
+              handleSaveAddressDraft={handleSaveAddressDraft}
+              handleManualAddressLocate={handleManualAddressLocate}
+              setMapModalOpen={setMapModalOpen}
+              mapRetrying={mapRetrying}
+              mapStatusText={mapStatusText}
+              validatePhone={validatePhone}
+              validateEmail={validateEmail}
+              isOpen24Hours={isOpen24Hours}
+              handleOpen24HoursChange={handleOpen24HoursChange}
+              actionsNode={formActionsNode}
+              form={form}
+              readOnly={isReviewing}
+            />
+          )
+          : activeTab === 'images'
+            ? (
+              <ImagesModule
+                hotelImageGroups={hotelImageGroups}
+                imageLoadError={imageLoadError}
+                onRetryLoadImages={handleRetryLoadImages}
+                hotelImages={hotelImages}
+                uploadingByGroup={uploadingByGroup}
+                failedUploadByGroup={failedUploadByGroup}
+                sortingByGroup={sortingByGroup}
+                deletingImageIds={deletingImageIds}
+                dragOverTargetByGroup={dragOverTargetByGroup}
+                onDragStartImage={handleImageDragStart}
+                onDragOverImage={handleImageDragOver}
+                onDragLeaveImage={handleImageDragLeave}
+                onDropImage={handleImageDrop}
+                onDragEndImage={handleImageDragEnd}
+                onPreviewImage={handleImagePreview}
+                onDeleteImage={handleDeleteHotelImage}
+                uploadHotelImage={uploadHotelImage}
+                beforeHotelImageUpload={beforeHotelImageUpload}
+                actionsNode={formActionsNode}
+                form={form}
+                resolveImageUrl={getFileUrl}
+                readOnly={isReviewing}
+              />
+            )
+            : activeTab === 'facilities'
+              ? (
+                <FacilitiesModule
+                  facilityCategoryList={facilityCategoryList}
+                  customFacilityInput={customFacilityInput}
+                  setCustomFacilityInput={setCustomFacilityInput}
+                  MAX_CUSTOM_FACILITY_LENGTH={MAX_CUSTOM_FACILITY_LENGTH}
+                  handleAddCustomFacility={handleAddCustomFacility}
+                  customFacilities={customFacilities}
+                  handleRemoveCustomFacility={handleRemoveCustomFacility}
+                  actionsNode={formActionsNode}
+                  form={form}
+                  readOnly={isReviewing}
+                />
+              )
+              : activeTab === 'certificates'
+                ? (
+                  <CertificatesModule
+                    certificateGroups={certificateGroups}
+                    certificateLoadError={certificateLoadError}
+                    onRetryLoadCertificates={handleRetryLoadCertificates}
+                    hotelCertificates={hotelCertificates}
+                    uploadingByGroup={certificateUploadingByGroup}
+                    failedUploadByGroup={certificateFailedUploadByGroup}
+                    deletingCertificateIds={deletingCertificateIds}
+                    onPreviewCertificate={handleCertificatePreview}
+                    onDeleteCertificate={handleDeleteHotelCertificate}
+                    uploadHotelCertificate={uploadHotelCertificate}
+                    beforeCertificateUpload={beforeCertificateUpload}
+                    actionsNode={formActionsNode}
+                    form={form}
+                    resolveImageUrl={getFileUrl}
+                    readOnly={isReviewing}
+                  />
+                )
+                : <PlaceholderPanel activeTabMeta={activeTabMeta} placeholderCopy={hotelInfoPlaceholderCopy} />}
       </Form>
 
       <Modal
@@ -914,12 +1105,46 @@ export default function HotelInfo() {
         ) : (
           <div className="hotel-info__map-shell hotel-info__map-shell--modal">
             <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
-            <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft}>暂存定位</Button>
-            <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate}>按输入地址定位</Button>
+            <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={isReviewing}>暂存定位</Button>
+            <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={isReviewing}>按输入地址定位</Button>
             {mapRetrying || mapStatusText ? <div className="hotel-info__map-loading">{mapRetrying ? '正在切换兼容地图内核...' : mapStatusText}</div> : null}
           </div>
         )}
       </Modal>
+
+      <Modal
+        open={imagePreview.open}
+        title={imagePreview.title || '图片预览'}
+        footer={null}
+        onCancel={closeImagePreview}
+        destroyOnHidden
+      >
+        {imagePreview.url ? (
+          <img
+            src={imagePreview.url}
+            alt={imagePreview.title || '酒店图片'}
+            style={{ width: '100%', borderRadius: 12 }}
+          />
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={certificatePreview.open}
+        title={certificatePreview.title || '证件预览'}
+        footer={null}
+        onCancel={closeCertificatePreview}
+        destroyOnHidden
+      >
+        {certificatePreview.url ? (
+          <img
+            src={certificatePreview.url}
+            alt={certificatePreview.title || '资质证件'}
+            style={{ width: '100%', borderRadius: 12 }}
+          />
+        ) : null}
+      </Modal>
     </div>
   );
 }
+
+

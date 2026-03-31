@@ -16,7 +16,7 @@ import {
   validateEmail,
   validatePhone,
   validateProfileName,
-} from '../../utils/validateRules';
+} from '../../utils/form';
 import './index.scss';
 
 const roleLabelMap = {
