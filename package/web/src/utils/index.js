@@ -1,3 +1,3 @@
-export * from './form';
-export * from './hotelInfo';
+export * from './validateRules';
+export * from './hotel-info';
 export * from './request';

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+﻿import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import { LockOutlined, UserOutlined, ReloadOutlined } from "@ant-design/icons";
@@ -12,7 +12,7 @@ import {
   calculatePasswordStrength,
   getPasswordStrengthInfo,
   refreshCaptcha
-} from "../../../utils/form";
+} from "../../../utils/validateRules";
 
 import { captchaAPI, loginAPI } from "../../../utils/request";
 import { setToken, fetchUserInfo } from "../../../store/slices/userSlice";

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Avatar, Button, Card, Col, Form, Input, Row, Upload, message } from 'antd';
 import {
@@ -16,7 +16,7 @@ import {
   validateEmail,
   validatePhone,
   validateProfileName,
-} from '../../utils/form';
+} from '../../utils/validateRules';
 import './index.scss';
 
 const roleLabelMap = {

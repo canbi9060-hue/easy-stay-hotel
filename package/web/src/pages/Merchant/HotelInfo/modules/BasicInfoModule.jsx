@@ -34,8 +34,9 @@ export default function BasicInfoModule({
   handleSaveAddressDraft,
   handleManualAddressLocate,
   setMapModalOpen,
-  mapRetrying,
   mapStatusText,
+  mapUnavailableReason = '',
+  mapActionDisabled = false,
   validatePhone,
   validateEmail,
   isOpen24Hours,
@@ -84,11 +85,20 @@ export default function BasicInfoModule({
                 {renderMapAlerts()}
 
                 <div className="hotel-info__map-shell">
-                  <div className="hotel-info__map-preview" ref={previewMapContainerRef} />
-                  <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly}>暂存定位</Button>
-                  <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={readOnly}>按输入地址定位</Button>
-                  <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={readOnly}>展开地图</Button>
-                  {mapRetrying || mapStatusText ? <div className="hotel-info__map-loading">{mapRetrying ? '正在切换兼容地图内核...' : mapStatusText}</div> : null}
+                  {mapUnavailableReason ? (
+                    <div className="hotel-info__map-empty">
+                      <div className="hotel-info__map-empty-content">
+                        <div className="hotel-info__map-empty-title">地图功能不可用</div>
+                        <div className="hotel-info__map-empty-desc">{mapUnavailableReason}</div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hotel-info__map-preview" ref={previewMapContainerRef} />
+                  )}
+                  <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly || mapActionDisabled}>暂存定位</Button>
+                  <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={readOnly || mapActionDisabled}>按输入地址定位</Button>
+                  <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={readOnly || mapActionDisabled}>展开地图</Button>
+                  {!mapUnavailableReason && mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
                 </div>
               </Col>
             </Row>

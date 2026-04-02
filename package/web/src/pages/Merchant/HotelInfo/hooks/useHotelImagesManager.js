@@ -8,12 +8,14 @@ import {
   uploadMerchantHotelImageAPI,
 } from '../../../../utils/request';
 import {
+  calculateUploadPercent,
   createEmptyHotelImages,
   createEmptyImageGroupFlags,
   hotelImageGroups,
   normalizeHotelImagesPayload,
   removeKey,
-} from '../modules/constants';
+  validateImageUploadFile,
+} from '../../../../utils/hotel-info';
 
 const defaultImageLoadMessageKey = 'merchant-hotel-image-load-error';
 
@@ -38,13 +40,9 @@ export default function useHotelImagesManager({ getErrorMessage, imageLoadMessag
   }, []);
 
   const beforeHotelImageUpload = useCallback((file) => {
-    const isValidType = ['image/jpeg', 'image/png'].includes(file?.type);
-    if (!isValidType) {
-      message.error('仅支持 JPG/PNG 格式图片。');
-      return Upload.LIST_IGNORE;
-    }
-    if (file.size / 1024 / 1024 > 5) {
-      message.error('单张图片不能超过 5MB。');
+    const validation = validateImageUploadFile(file);
+    if (!validation.valid) {
+      message.error(validation.message);
       return Upload.LIST_IGNORE;
     }
     return true;
@@ -78,7 +76,7 @@ export default function useHotelImagesManager({ getErrorMessage, imageLoadMessag
       formData.append('image', file);
 
       const uploadRes = await uploadMerchantHotelImageAPI(formData, ({ loaded, total }) => {
-        const percent = total ? Math.max(1, Math.min(100, Math.round((loaded / total) * 100))) : 0;
+        const percent = calculateUploadPercent({ loaded, total });
         setUploadingByGroup((prev) => ({
           ...prev,
           [groupKey]: {

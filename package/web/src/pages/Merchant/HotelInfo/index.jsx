@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
@@ -25,10 +25,7 @@ import {
   fetchDistrictOptions,
   formatAddressText,
   geocodeAddress,
-  geocodeAddressByJsApi,
   getDistrictCenterByKeyword,
-  getDistrictMetaByKeyword,
-  isAmapRecoverableError,
   loadAmapScript,
   locateByIP,
   MAX_CUSTOM_FACILITY_COUNT,
@@ -36,26 +33,20 @@ import {
   normalizeHotelProfile,
   renderMapInstance,
   reverseGeocodeCoordinates,
-  reverseGeocodeCoordinatesByJsApi,
   reviewStatusMap,
-  retryAmapWithLegacyVersion,
   starLevelOptions,
-} from '../../../utils/hotelInfo';
-import { validateEmail, validatePhone } from '../../../utils/form';
+  certificateGroups,
+  hotelImageGroups,
+  hotelInfoTabs,
+} from '../../../utils/hotel-info';
+import { validateEmail, validatePhone } from '../../../utils/validateRules';
 import BasicInfoModule from './modules/BasicInfoModule';
 import CertificatesModule from './modules/CertificatesModule';
 import FacilitiesModule from './modules/FacilitiesModule';
 import FormActions from './modules/FormActions';
 import ImagesModule from './modules/ImagesModule';
-import PlaceholderPanel from './modules/PlaceholderPanel';
 import useHotelCertificatesManager from './hooks/useHotelCertificatesManager';
 import useHotelImagesManager from './hooks/useHotelImagesManager';
-import {
-  certificateGroups,
-  hotelImageGroups,
-  hotelInfoPlaceholderCopy,
-  hotelInfoTabs,
-} from './modules/constants';
 import './index.scss';
 
 const getErrorMessage = (error, fallback) => error?.errorMsg || error?.message || fallback;
@@ -119,7 +110,6 @@ export default function HotelInfo() {
   const [districtOptions, setDistrictOptions] = useState([]);
   const [regionLoading, setRegionLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  const [mapRetrying, setMapRetrying] = useState(false);
   const [mapModalOpen, setMapModalOpen] = useState(false);
   const [mapLoadError, setMapLoadError] = useState('');
   const [addressLocateError, setAddressLocateError] = useState('');
@@ -139,9 +129,7 @@ export default function HotelInfo() {
   const modalDragHandlerRef = useRef(null);
   const updateSourceRef = useRef('idle');
   const ipLocateTriedRef = useRef(false);
-  const geocodeRequestIdRef = useRef(0);
-  const districtCenterRequestIdRef = useRef(0);
-  const locateTaskIdRef = useRef(0);
+  const locateRequestIdRef = useRef(0);
   const pointPickRequestIdRef = useRef(0);
   const draftRestoredRef = useRef(false);
   const hasManualSelectionRef = useRef(false);
@@ -197,9 +185,6 @@ export default function HotelInfo() {
 
   const addressValue = Form.useWatch(['address'], form) || emptyHotelProfile.address;
   const isOpen24Hours = Form.useWatch(['operationRules', 'isOpen24Hours'], form);
-  const provinceValue = Form.useWatch(['address', 'province'], form);
-  const cityValue = Form.useWatch(['address', 'city'], form);
-  const districtValue = Form.useWatch(['address', 'district'], form);
   const detailValue = Form.useWatch(['address', 'detail'], form);
   const reviewStatusMeta = reviewStatusMap[reviewStatus] || reviewStatusMap.incomplete;
   const isReviewing = reviewStatus === 'reviewing';
@@ -226,6 +211,9 @@ export default function HotelInfo() {
     return coordinates;
   }, [addressTextInput, addressValue]);
   const displayCoordinates = currentCoordinates || initialCoordinates;
+  const mapUnavailableReason = (!amapJsKey || !amapWebKey)
+    ? 'Map is unavailable: configure REACT_APP_AMAP_JS_KEY and REACT_APP_AMAP_WEB_KEY in .env, then restart the app.'
+    : '';
 
   const saveAddressDraftToSession = useCallback((address, { silent = true, mode = 'manual' } = {}) => {
     try {
@@ -269,13 +257,13 @@ export default function HotelInfo() {
 
   const refreshRegionOptions = useCallback(async (address) => {
     try {
-      if (address?.province) setCityOptions(await fetchDistrictOptions(address.province));
+      if (address?.province) setCityOptions(await fetchDistrictOptions(amapWebKey, address.province));
       else setCityOptions([]);
     } catch (error) {
       setCityOptions([]);
     }
     try {
-      if (address?.city) setDistrictOptions(await fetchDistrictOptions(address.city));
+      if (address?.city) setDistrictOptions(await fetchDistrictOptions(amapWebKey, address.city));
       else setDistrictOptions([]);
     } catch (error) {
       setDistrictOptions([]);
@@ -332,105 +320,39 @@ export default function HotelInfo() {
 
     const targetAddress = address || form.getFieldValue(['address']) || emptyHotelProfile.address;
     const detailText = typeof targetAddress?.detail === 'string' ? targetAddress.detail.trim() : '';
-    const cityConstraint = targetAddress?.city || targetAddress?.province || '';
-    const regionKeyword = [targetAddress?.province, targetAddress?.city, targetAddress?.district].filter(Boolean).join('');
-    const deepestRegionKeyword = targetAddress?.district || targetAddress?.city || targetAddress?.province || '';
-    let regionMetaPromise = null;
-    const resolveRegionMeta = async () => {
-      if (regionMetaPromise !== null) {
-        return regionMetaPromise;
-      }
-      const targetKeyword = regionKeyword || deepestRegionKeyword;
-      if (!targetKeyword) {
-        regionMetaPromise = Promise.resolve(null);
-        return regionMetaPromise;
-      }
-      regionMetaPromise = getDistrictMetaByKeyword(targetKeyword).catch(() => null);
-      return regionMetaPromise;
-    };
-    const locateRegionCenter = async () => {
-      const regionMeta = await resolveRegionMeta();
-      if (Number.isFinite(regionMeta?.longitude) && Number.isFinite(regionMeta?.latitude)) {
-        return {
-          longitude: regionMeta.longitude,
-          latitude: regionMeta.latitude,
-          adcode: regionMeta.adcode || '',
-          name: regionMeta.name || regionKeyword || deepestRegionKeyword,
-        };
-      }
+    const regionKeyword = targetAddress?.district || targetAddress?.city || targetAddress?.province || '';
 
-      const targetKeyword = regionKeyword || deepestRegionKeyword;
-      if (!targetKeyword) return null;
-      let center = null;
-      try {
-        center = await getDistrictCenterByKeyword(targetKeyword);
-      } catch (error) {
-        center = null;
-      }
-      if (!center && window.AMap) {
-        center = await geocodeAddressByJsApi(window.AMap, targetKeyword, { city: cityConstraint });
-      }
-      return center;
-    };
-
-    if (!detailText && !regionKeyword && !deepestRegionKeyword) {
+    if (!detailText && !regionKeyword) {
       if (source === 'manual') message.warning('请先填写省市区或详细地址。');
       return null;
     }
 
-    const locateTaskId = ++locateTaskIdRef.current;
+    const requestId = ++locateRequestIdRef.current;
     setAddressLocateError('');
-    setMapStatusText('正在根据详细地址定位...');
+    setMapStatusText('正在定位...');
 
     try {
-      if (detailText) {
-        const requestId = ++geocodeRequestIdRef.current;
-        districtCenterRequestIdRef.current += 1;
-        let geocode = null;
-        const regionMeta = await resolveRegionMeta();
-        try {
-          geocode = await geocodeAddress(formatAddressText({ ...targetAddress, detail: detailText }), {
-            city: cityConstraint,
-            adcode: regionMeta?.adcode || '',
-            regionKeyword,
-          });
-        } catch (error) {
-          geocode = null;
-        }
-        if (!geocode && window.AMap) {
-          geocode = await geocodeAddressByJsApi(window.AMap, formatAddressText({ ...targetAddress, detail: detailText }), {
-            city: cityConstraint,
-          });
-        }
-        if (!geocode) {
-          geocode = await locateRegionCenter();
-        }
-        if (locateTaskId !== locateTaskIdRef.current || requestId !== geocodeRequestIdRef.current) return null;
-        if (!geocode) throw new Error('未能定位当前详细地址。');
-        const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-        const nextCoordinates = { latitude: geocode.latitude, longitude: geocode.longitude };
-        form.setFieldsValue({ address: { ...latestAddress, ...nextCoordinates } });
-        setInitialCoordinates(nextCoordinates);
-        return geocode;
-      }
+      const located = detailText
+        ? await geocodeAddress(amapWebKey, formatAddressText({ ...targetAddress, detail: detailText }), {
+          city: targetAddress?.city || targetAddress?.province || '',
+        })
+        : await getDistrictCenterByKeyword(amapWebKey, regionKeyword);
 
-      const centerRequestId = ++districtCenterRequestIdRef.current;
-      geocodeRequestIdRef.current += 1;
-      const center = await locateRegionCenter();
-      if (locateTaskId !== locateTaskIdRef.current || centerRequestId !== districtCenterRequestIdRef.current) return null;
-      if (!center) throw new Error('未能定位当前行政区。');
+      if (requestId !== locateRequestIdRef.current) return null;
+      if (!located) throw new Error(detailText ? 'Failed to locate the detailed address.' : 'Failed to locate the selected region.');
+
       const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-      const nextCoordinates = { latitude: center.latitude, longitude: center.longitude };
+      const nextCoordinates = { latitude: located.latitude, longitude: located.longitude };
       form.setFieldsValue({ address: { ...latestAddress, ...nextCoordinates } });
       setInitialCoordinates(nextCoordinates);
-      return center;
+      return located;
     } catch (error) {
-      if (locateTaskId === locateTaskIdRef.current) {
+      if (requestId === locateRequestIdRef.current) {
         setAddressLocateError(getErrorMessage(error, '定位失败，请检查地址信息。'));
       }
       return null;
     } finally {
-      if (locateTaskId === locateTaskIdRef.current) window.setTimeout(() => setMapStatusText(''), 1200);
+      if (requestId === locateRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 800);
     }
   }, [form, mapReady]);
 
@@ -440,9 +362,6 @@ export default function HotelInfo() {
     const requestId = ++pointPickRequestIdRef.current;
     setPointPickError('');
     setAddressLocateError('');
-    locateTaskIdRef.current += 1;
-    geocodeRequestIdRef.current += 1;
-    districtCenterRequestIdRef.current += 1;
     setMapStatusText('正在解析地图选点...');
 
     const baseAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
@@ -456,13 +375,7 @@ export default function HotelInfo() {
     });
 
     try {
-      let nextAddressInfo = null;
-      if (amapWebKey) {
-        nextAddressInfo = await reverseGeocodeCoordinates(coordinates);
-      }
-      if (!nextAddressInfo && window.AMap) {
-        nextAddressInfo = await reverseGeocodeCoordinatesByJsApi(window.AMap, coordinates);
-      }
+      const nextAddressInfo = await reverseGeocodeCoordinates(amapWebKey, coordinates);
       if (requestId !== pointPickRequestIdRef.current) return;
       if (!nextAddressInfo) {
         throw new Error('未能解析当前选点地址。');
@@ -485,15 +398,10 @@ export default function HotelInfo() {
       form.setFieldsValue({ address: nextAddress });
     } catch (error) {
       if (requestId === pointPickRequestIdRef.current) {
-        const rawMessage = getErrorMessage(error, '根据地图选点回填地址失败。');
-        if (/CUQPS_HAS_EXCEEDED_THE_LIMIT/i.test(rawMessage)) {
-          setPointPickError('逆地理编码配额已超限，已更新坐标，请手动修改地址或稍后再试。');
-        } else {
-          setPointPickError(rawMessage);
-        }
+        setPointPickError(getErrorMessage(error, '根据地图选点回填地址失败。'));
       }
     } finally {
-      if (requestId === pointPickRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 1200);
+      if (requestId === pointPickRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 800);
     }
   }, [form, isReviewing, refreshRegionOptions]);
 
@@ -509,22 +417,6 @@ export default function HotelInfo() {
     destroyMapInstance(previewBindings);
     destroyMapInstance(modalBindings);
   }, [modalBindings, previewBindings]);
-
-  const fallbackToLegacyMap = useCallback(async () => {
-    if (mapRetrying || !amapJsKey) return;
-    try {
-      setMapRetrying(true);
-      resetMapObjects();
-      await retryAmapWithLegacyVersion(amapJsKey);
-      setMapReady(true);
-      setMapLoadError('');
-    } catch (error) {
-      setMapLoadError(getErrorMessage(error, '地图加载失败。'));
-      setMapReady(false);
-    } finally {
-      setMapRetrying(false);
-    }
-  }, [mapRetrying, resetMapObjects]);
 
   useEffect(() => {
     (async () => {
@@ -543,7 +435,7 @@ export default function HotelInfo() {
         message.open({
           key: hotelInfoLoadMessageKey,
           type: 'error',
-          content: getErrorMessage(error, '获取酒店资料失败，请稍后重试。'),
+          content: getErrorMessage(error, 'Failed to load hotel profile, please try again later.'),
         });
       } finally {
         setLoading(false);
@@ -564,10 +456,14 @@ export default function HotelInfo() {
   }, [loading, restoreAddressDraftFromSession]);
 
   useEffect(() => {
+    if (!amapWebKey) {
+      setProvinceOptions([]);
+      return;
+    }
     (async () => {
       try {
         setRegionLoading(true);
-        setProvinceOptions(await fetchDistrictOptions(emptyHotelProfile.address.country));
+        setProvinceOptions(await fetchDistrictOptions(amapWebKey, emptyHotelProfile.address.country));
       } catch (error) {
         message.warning(getErrorMessage(error, '加载省份选项失败。'));
       } finally {
@@ -577,8 +473,8 @@ export default function HotelInfo() {
   }, []);
 
   useEffect(() => {
-    if (!amapJsKey) {
-      setMapLoadError('缺少高德地图 JS Key。');
+    if (!amapJsKey || !amapWebKey) {
+      setMapLoadError('');
       setMapReady(false);
       return;
     }
@@ -599,11 +495,12 @@ export default function HotelInfo() {
   );
 
   useEffect(() => {
-    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current || !window.AMap || isReviewing) return;
+    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current || isReviewing) return;
     ipLocateTriedRef.current = true;
 
-    locateByIP(window.AMap)
+    locateByIP(amapWebKey)
       .then(async (location) => {
+        if (!location) return;
         const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
         const hasTextInput = hasAddressTextInput(latestAddress);
         if (hasTextInput || hasManualSelectionRef.current) {
@@ -615,22 +512,12 @@ export default function HotelInfo() {
         const hasValidCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
         if (!hasValidCoordinates) {
           setInitialCoordinates(null);
-          setMapStatusText('未获取到有效 IP 位置，请补充地址后定位。');
           return;
         }
 
         const ipCoordinates = { latitude: location.latitude, longitude: location.longitude };
-        if (location?.isFallback) {
-          setMapStatusText('未获取到有效 IP 位置，地图暂时显示默认中心。');
-          setInitialCoordinates(null);
-        } else {
-          setMapStatusText('正在根据 IP 定位...');
-          setInitialCoordinates(ipCoordinates);
-        }
-
-        if (location?.isFallback) {
-          return;
-        }
+        setMapStatusText('正在根据 IP 定位...');
+        setInitialCoordinates(ipCoordinates);
 
         const addressPatch = {};
         if (!latestAddress.country) {
@@ -644,13 +531,7 @@ export default function HotelInfo() {
         }
 
         try {
-          let reverseAddress = null;
-          if (amapWebKey) {
-            reverseAddress = await reverseGeocodeCoordinates(ipCoordinates);
-          }
-          if (!reverseAddress && window.AMap) {
-            reverseAddress = await reverseGeocodeCoordinatesByJsApi(window.AMap, ipCoordinates);
-          }
+          const reverseAddress = await reverseGeocodeCoordinates(amapWebKey, ipCoordinates);
 
           if (!latestAddress.province && !addressPatch.province && reverseAddress?.province) {
             addressPatch.province = reverseAddress.province;
@@ -681,7 +562,7 @@ export default function HotelInfo() {
         form.setFieldsValue({ address: nextAddress });
       })
       .finally(() => {
-        window.setTimeout(() => setMapStatusText(''), 1200);
+        window.setTimeout(() => setMapStatusText(''), 800);
       });
   }, [form, hasUsableUserLocation, isReviewing, loading, mapReady, refreshRegionOptions]);
 
@@ -699,12 +580,11 @@ export default function HotelInfo() {
           previewMapRef.current?.setCenter?.([displayCoordinates.longitude, displayCoordinates.latitude]);
         }
       } catch (error) {
-        if (isAmapRecoverableError(error)) fallbackToLegacyMap();
-        else setMapLoadError(getErrorMessage(error, '地图预览渲染失败。'));
+        setMapLoadError(getErrorMessage(error, '地图预览渲染失败。'));
       }
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [activeTab, applyPointSelection, displayCoordinates, fallbackToLegacyMap, mapLoadError, mapReady, previewBindings]);
+  }, [activeTab, applyPointSelection, displayCoordinates, mapLoadError, mapReady, previewBindings]);
 
   useEffect(() => {
     if (!mapModalOpen || !mapReady || !window.AMap || !modalMapContainerRef.current || mapLoadError) return;
@@ -716,12 +596,11 @@ export default function HotelInfo() {
           modalMapRef.current?.setCenter?.([displayCoordinates.longitude, displayCoordinates.latitude]);
         }
       } catch (error) {
-        if (isAmapRecoverableError(error)) fallbackToLegacyMap();
-        else setMapLoadError(getErrorMessage(error, '地图弹窗渲染失败。'));
+        setMapLoadError(getErrorMessage(error, '地图弹窗渲染失败。'));
       }
     }, 120);
     return () => window.clearTimeout(timer);
-  }, [applyPointSelection, displayCoordinates, fallbackToLegacyMap, mapLoadError, mapModalOpen, mapReady, modalBindings]);
+  }, [applyPointSelection, displayCoordinates, mapLoadError, mapModalOpen, mapReady, modalBindings]);
 
   const syncMapByCoordinates = useCallback((bindings, coordinates) => {
     if (!bindings || !coordinates) return;
@@ -740,24 +619,17 @@ export default function HotelInfo() {
   }, [displayCoordinates, modalBindings, previewBindings, syncMapByCoordinates]);
 
   useEffect(() => {
-    geocodeRequestIdRef.current += 1;
-    districtCenterRequestIdRef.current += 1;
-    locateTaskIdRef.current += 1;
-  }, [provinceValue, cityValue, districtValue, detailValue]);
-
-  useEffect(() => {
     const detailText = typeof detailValue === 'string' ? detailValue.trim() : '';
-    const regionKeyword = districtValue || cityValue || provinceValue || '';
-    if (!mapReady || (!detailText && !regionKeyword)) return;
+    if (!mapReady || !detailText) return;
     if (updateSourceRef.current === 'map') {
       updateSourceRef.current = 'idle';
       return;
     }
     const timer = window.setTimeout(() => {
       triggerAddressLocate({ source: 'auto' });
-    }, detailText ? 350 : 250);
+    }, 350);
     return () => window.clearTimeout(timer);
-  }, [provinceValue, cityValue, districtValue, detailValue, mapReady, triggerAddressLocate]);
+  }, [detailValue, mapReady, triggerAddressLocate]);
 
   useEffect(() => () => resetMapObjects(), [resetMapObjects]);
 
@@ -777,7 +649,7 @@ export default function HotelInfo() {
       setInitialCoordinates(optionCoordinates);
     }
     try {
-      setCityOptions(value ? await fetchDistrictOptions(value) : []);
+      setCityOptions(value ? await fetchDistrictOptions(amapWebKey, value) : []);
     } catch (error) {
       setCityOptions([]);
     }
@@ -798,7 +670,7 @@ export default function HotelInfo() {
       setInitialCoordinates(optionCoordinates);
     }
     try {
-      setDistrictOptions(value ? await fetchDistrictOptions(value) : []);
+      setDistrictOptions(value ? await fetchDistrictOptions(amapWebKey, value) : []);
     } catch (error) {
       setDistrictOptions([]);
     }
@@ -956,14 +828,12 @@ export default function HotelInfo() {
 
   const renderMapAlerts = () => (
     <>
+      {mapUnavailableReason ? <Alert type="warning" showIcon message="Map unavailable" description={mapUnavailableReason} style={{ marginBottom: 12 }} /> : null}
       {mapLoadError ? <Alert type="warning" showIcon message="地图加载失败" description={mapLoadError} style={{ marginBottom: 12 }} /> : null}
-      {!amapWebKey ? <Alert type="info" showIcon message="缺少高德 Web 服务 Key" description="已自动回退到 JSAPI 定位能力，建议补齐 Web Key 以提升稳定性。" style={{ marginBottom: 12 }} /> : null}
       {addressLocateError ? <Alert type="warning" showIcon message="根据地址定位失败" description={addressLocateError} style={{ marginBottom: 12 }} /> : null}
       {pointPickError ? <Alert type="warning" showIcon message="根据地图选点回填地址失败" description={pointPickError} style={{ marginBottom: 12 }} /> : null}
     </>
   );
-
-  const activeTabMeta = hotelInfoTabs.find((item) => item.key === activeTab) || hotelInfoTabs[0];
 
   if (loading) {
     return <div className="hotel-info__loading"><Spin description="正在加载酒店资料..." /></div>;
@@ -1012,8 +882,9 @@ export default function HotelInfo() {
               handleSaveAddressDraft={handleSaveAddressDraft}
               handleManualAddressLocate={handleManualAddressLocate}
               setMapModalOpen={setMapModalOpen}
-              mapRetrying={mapRetrying}
               mapStatusText={mapStatusText}
+              mapUnavailableReason={mapUnavailableReason}
+              mapActionDisabled={isReviewing || Boolean(mapUnavailableReason)}
               validatePhone={validatePhone}
               validateEmail={validateEmail}
               isOpen24Hours={isOpen24Hours}
@@ -1085,7 +956,7 @@ export default function HotelInfo() {
                     readOnly={isReviewing}
                   />
                 )
-                : <PlaceholderPanel activeTabMeta={activeTabMeta} placeholderCopy={hotelInfoPlaceholderCopy} />}
+                : null}
       </Form>
 
       <Modal
@@ -1100,16 +971,16 @@ export default function HotelInfo() {
         }}
         destroyOnHidden
       >
-        {mapLoadError ? (
-          <Alert type="warning" showIcon message="地图加载失败" description={mapLoadError} />
+        {mapUnavailableReason || mapLoadError ? (
+          <Alert type="warning" showIcon message={mapUnavailableReason ? 'Map unavailable' : 'Map load failed'} description={mapUnavailableReason || mapLoadError} />
         ) : (
-          <div className="hotel-info__map-shell hotel-info__map-shell--modal">
-            <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
-            <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={isReviewing}>暂存定位</Button>
-            <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={isReviewing}>按输入地址定位</Button>
-            {mapRetrying || mapStatusText ? <div className="hotel-info__map-loading">{mapRetrying ? '正在切换兼容地图内核...' : mapStatusText}</div> : null}
-          </div>
-        )}
+            <div className="hotel-info__map-shell hotel-info__map-shell--modal">
+              <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
+              <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={isReviewing}>暂存定位</Button>
+              <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={isReviewing}>按输入地址定位</Button>
+              {mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
+            </div>
+          )}
       </Modal>
 
       <Modal
@@ -1146,5 +1017,7 @@ export default function HotelInfo() {
     </div>
   );
 }
+
+
 
 
