@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Alert,
   Button,
   Card,
   Checkbox,
@@ -7,6 +8,7 @@ import {
   Divider,
   Form,
   Input,
+  Modal,
   Radio,
   Row,
   Select,
@@ -34,8 +36,12 @@ export default function BasicInfoModule({
   handleSaveAddressDraft,
   handleManualAddressLocate,
   setMapModalOpen,
+  mapModalOpen,
+  modalMapContainerRef,
+  mapLoadError = '',
   mapStatusText,
   mapUnavailableReason = '',
+  onMapModalAfterOpenChange,
   mapActionDisabled = false,
   validatePhone,
   validateEmail,
@@ -156,6 +162,33 @@ export default function BasicInfoModule({
       </Row>
 
       {actionsNode}
+
+      <Modal
+        open={mapModalOpen}
+        width={960}
+        title="地图预览"
+        footer={null}
+        forceRender
+        onCancel={() => setMapModalOpen(false)}
+        afterOpenChange={onMapModalAfterOpenChange}
+        destroyOnHidden
+      >
+        {mapUnavailableReason || mapLoadError ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={mapUnavailableReason ? '地图不可用' : '地图加载失败'}
+            description={mapUnavailableReason || mapLoadError}
+          />
+        ) : (
+          <div className="hotel-info__map-shell hotel-info__map-shell--modal">
+            <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
+            <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly}>暂存定位</Button>
+            <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={readOnly}>按输入地址定位</Button>
+            {mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

@@ -1,37 +1,32 @@
-import React from 'react';
-import {
-  Alert,
-  Button,
-  Card,
-  Divider,
-  Progress,
-  Upload,
-} from 'antd';
-import {
-  DeleteOutlined,
-  EyeOutlined,
-  LoadingOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Divider, Image, Upload } from 'antd';
+
+const getBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = (error) => reject(error);
+});
+
+const toUploadFileItem = (item, resolveImageUrl) => ({
+  uid: String(item?.id),
+  name: item?.filePath?.split('/')?.pop() || 'certificate.png',
+  status: 'done',
+  url: resolveImageUrl(item?.filePath),
+  response: item,
+});
 
 const renderGroupUploadArea = ({
   groupMeta,
-  hotelCertificates,
-  uploadingByGroup,
-  failedUploadByGroup,
-  deletingCertificateIds,
-  onPreviewCertificate,
+  groupFileList,
+  onFileListChange,
+  onPreview,
   onDeleteCertificate,
   uploadHotelCertificate,
   beforeCertificateUpload,
-  resolveImageUrl,
   readOnly,
 }) => {
-  const groupList = hotelCertificates[groupMeta.key] || [];
-  const uploadingInfo = uploadingByGroup[groupMeta.key];
-  const failedInfo = failedUploadByGroup[groupMeta.key];
-  const canUpload = groupList.length < groupMeta.maxCount && !uploadingInfo && !readOnly;
-
   const handleUploadRequest = async ({ file, onSuccess, onError, onProgress }) => {
     try {
       await uploadHotelCertificate(groupMeta.key, file, (percent) => onProgress?.({ percent }));
@@ -47,84 +42,35 @@ const renderGroupUploadArea = ({
       {Number(groupMeta.maxCount) > 0 ? (
         <p className="hotel-info__certificate-slot-limit">最多上传 {groupMeta.maxCount} 张</p>
       ) : null}
-      <div className="hotel-info__image-grid hotel-info__image-grid--certificate">
-        {groupList.map((item) => {
-          const imageUrl = resolveImageUrl(item.filePath);
-          const isDeleting = Boolean(deletingCertificateIds[item.id]);
-          return (
-            <div key={item.id} className="hotel-info__image-item">
-              <img src={imageUrl} alt={groupMeta.title || '资质证件'} />
-              <div className="hotel-info__image-item-mask">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<EyeOutlined />}
-                  onClick={() => onPreviewCertificate(imageUrl, groupMeta.title || '资质证件')}
-                >
-                  预览
-                </Button>
-                <Button
-                  type="text"
-                  size="small"
-                  danger
-                  icon={<DeleteOutlined />}
-                  loading={isDeleting}
-                  disabled={isDeleting || readOnly}
-                  onClick={() => onDeleteCertificate(groupMeta.key, item.id)}
-                >
-                  删除
-                </Button>
-              </div>
-            </div>
-          );
-        })}
-
-        {uploadingInfo ? (
-          <div className="hotel-info__image-item hotel-info__image-item--uploading">
-            <div className="hotel-info__image-uploading-title">
-              <LoadingOutlined /> 上传中
-            </div>
-            <div className="hotel-info__image-uploading-name">{uploadingInfo.fileName}</div>
-            <Progress percent={Math.max(1, Math.min(99, Number(uploadingInfo.percent) || 0))} size="small" />
-          </div>
-        ) : null}
-
-        {failedInfo ? (
-          <div className="hotel-info__image-item hotel-info__image-item--error">
-            <div className="hotel-info__image-error-title">上传失败，请重新上传</div>
-            <div className="hotel-info__image-error-name">{failedInfo.fileName}</div>
-            <Button
-              type="link"
-              disabled={readOnly}
-              onClick={async () => {
-                if (readOnly) return;
-                try {
-                  await uploadHotelCertificate(groupMeta.key, failedInfo.file);
-                } catch (error) {
-                  // 错误提示已在上传方法里处理
-                }
-              }}
-            >
-              重新上传
-            </Button>
-          </div>
-        ) : null}
-
-        {canUpload ? (
-          <Upload
-            showUploadList={false}
-            beforeUpload={beforeCertificateUpload}
-            customRequest={handleUploadRequest}
-            accept=".jpg,.jpeg,.png"
-            disabled={readOnly}
-          >
-            <button type="button" className="hotel-info__upload-trigger hotel-info__upload-trigger--certificate" disabled={readOnly}>
-              <PlusOutlined />
-              <span>上传附件</span>
-            </button>
-          </Upload>
-        ) : null}
-      </div>
+      <Upload
+        listType="picture-card"
+        fileList={groupFileList}
+        beforeUpload={beforeCertificateUpload}
+        customRequest={handleUploadRequest}
+        accept=".jpg,.jpeg,.png"
+        disabled={readOnly}
+        maxCount={groupMeta.maxCount}
+        onChange={({ fileList }) => onFileListChange(groupMeta.key, fileList)}
+        onPreview={onPreview}
+        onRemove={async (file) => {
+          if (readOnly) return false;
+          const certificateId = file?.response?.id || Number(file?.uid);
+          if (!certificateId) return false;
+          try {
+            await onDeleteCertificate(groupMeta.key, certificateId);
+            return true;
+          } catch (error) {
+            return false;
+          }
+        }}
+      >
+        {groupFileList.length >= groupMeta.maxCount || readOnly ? null : (
+          <button type="button" className="hotel-info__upload-trigger hotel-info__upload-trigger--certificate">
+            <PlusOutlined />
+            <span>上传附件</span>
+          </button>
+        )}
+      </Upload>
     </div>
   );
 };
@@ -134,10 +80,6 @@ export default function CertificatesModule({
   certificateLoadError,
   onRetryLoadCertificates,
   hotelCertificates,
-  uploadingByGroup,
-  failedUploadByGroup,
-  deletingCertificateIds,
-  onPreviewCertificate,
   onDeleteCertificate,
   uploadHotelCertificate,
   beforeCertificateUpload,
@@ -145,6 +87,30 @@ export default function CertificatesModule({
   resolveImageUrl,
   readOnly = false,
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState('');
+  const [fileListByGroup, setFileListByGroup] = useState({});
+
+  useEffect(() => {
+    const nextFileList = {};
+    Object.keys(hotelCertificates || {}).forEach((groupKey) => {
+      nextFileList[groupKey] = (hotelCertificates[groupKey] || []).map((item) => toUploadFileItem(item, resolveImageUrl));
+    });
+    setFileListByGroup(nextFileList);
+  }, [hotelCertificates, resolveImageUrl]);
+
+  const handleFileListChange = (groupKey, nextFileList) => {
+    setFileListByGroup((prev) => ({ ...prev, [groupKey]: nextFileList }));
+  };
+
+  const handlePreview = async (file) => {
+    if (!file.url && !file.preview && file.originFileObj) {
+      file.preview = await getBase64(file.originFileObj);
+    }
+    setPreviewImage(file.url || file.preview || '');
+    setPreviewOpen(true);
+  };
+
   return (
     <>
       <Card className="hotel-info__section-card hotel-info__cert-card">
@@ -179,15 +145,12 @@ export default function CertificatesModule({
                 {section.children.map((group) =>
                   renderGroupUploadArea({
                     groupMeta: group,
-                    hotelCertificates,
-                    uploadingByGroup,
-                    failedUploadByGroup,
-                    deletingCertificateIds,
-                    onPreviewCertificate,
+                    groupFileList: fileListByGroup[group.key] || [],
+                    onFileListChange: handleFileListChange,
+                    onPreview: handlePreview,
                     onDeleteCertificate,
                     uploadHotelCertificate,
                     beforeCertificateUpload,
-                    resolveImageUrl,
                     readOnly,
                   }))}
               </div>
@@ -195,15 +158,12 @@ export default function CertificatesModule({
               <div className={`hotel-info__cert-row columns-${Math.min(section.columns || 1, 3)}`}>
                 {renderGroupUploadArea({
                   groupMeta: section,
-                  hotelCertificates,
-                  uploadingByGroup,
-                  failedUploadByGroup,
-                  deletingCertificateIds,
-                  onPreviewCertificate,
+                  groupFileList: fileListByGroup[section.key] || [],
+                  onFileListChange: handleFileListChange,
+                  onPreview: handlePreview,
                   onDeleteCertificate,
                   uploadHotelCertificate,
                   beforeCertificateUpload,
-                  resolveImageUrl,
                   readOnly,
                 })}
               </div>
@@ -214,6 +174,20 @@ export default function CertificatesModule({
         ))}
       </Card>
       {actionsNode}
+
+      {previewImage ? (
+        <Image
+          style={{ display: 'none' }}
+          preview={{
+            open: previewOpen,
+            onOpenChange: setPreviewOpen,
+            afterOpenChange: (open) => {
+              if (!open) setPreviewImage('');
+            },
+          }}
+          src={previewImage}
+        />
+      ) : null}
     </>
   );
 }

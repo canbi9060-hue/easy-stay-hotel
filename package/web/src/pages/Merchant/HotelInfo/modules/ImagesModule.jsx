@@ -1,35 +1,33 @@
-import React from 'react';
-import {
-  Alert,
-  Button,
-  Card,
-  Divider,
-  Progress,
-  Upload,
-} from 'antd';
-import {
-  DeleteOutlined,
-  EyeOutlined,
-  LoadingOutlined,
-  PlusOutlined,
-} from '@ant-design/icons';
+import React, { useEffect, useState } from 'react';
+import { PlusOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Divider, Image, Upload } from 'antd';
+
+const getBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = (error) => reject(error);
+});
+
+const toUploadFileItem = (item, resolveImageUrl) => ({
+  uid: String(item?.id),
+  name: item?.filePath?.split('/')?.pop() || 'image.png',
+  status: 'done',
+  url: resolveImageUrl(item?.filePath),
+  response: item,
+});
+
+const mapGroupFileList = (hotelImages, hotelImageGroups, resolveImageUrl) =>
+  hotelImageGroups.reduce((acc, groupMeta) => {
+    acc[groupMeta.key] = (hotelImages[groupMeta.key] || []).map((item) => toUploadFileItem(item, resolveImageUrl));
+    return acc;
+  }, {});
 
 export default function ImagesModule({
   hotelImageGroups,
   imageLoadError,
   onRetryLoadImages,
   hotelImages,
-  uploadingByGroup,
-  failedUploadByGroup,
-  sortingByGroup,
-  deletingImageIds,
-  dragOverTargetByGroup,
-  onDragStartImage,
-  onDragOverImage,
-  onDragLeaveImage,
-  onDropImage,
-  onDragEndImage,
-  onPreviewImage,
   onDeleteImage,
   uploadHotelImage,
   beforeHotelImageUpload,
@@ -37,6 +35,33 @@ export default function ImagesModule({
   resolveImageUrl,
   readOnly = false,
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState('');
+  const [fileListByGroup, setFileListByGroup] = useState({});
+
+  useEffect(() => {
+    setFileListByGroup(mapGroupFileList(hotelImages, hotelImageGroups, resolveImageUrl));
+  }, [hotelImageGroups, hotelImages, resolveImageUrl]);
+
+  const handleFileListChange = (groupKey, nextFileList) => {
+    setFileListByGroup((prev) => ({ ...prev, [groupKey]: nextFileList }));
+  };
+
+  const handlePreview = async (file) => {
+    if (!file.url && !file.preview && file.originFileObj) {
+      file.preview = await getBase64(file.originFileObj);
+    }
+    setPreviewImage(file.url || file.preview || '');
+    setPreviewOpen(true);
+  };
+
+  const uploadButton = (
+    <button type="button" className="hotel-info__upload-trigger">
+      <PlusOutlined />
+      <span>上传图片</span>
+    </button>
+  );
+
   return (
     <>
       <Card className="hotel-info__section-card hotel-info__images-card">
@@ -60,11 +85,7 @@ export default function ImagesModule({
         <Divider style={{ margin: '16px 0 22px' }} />
 
         {hotelImageGroups.map((groupMeta, groupIndex) => {
-          const groupList = hotelImages[groupMeta.key] || [];
-          const uploadingInfo = uploadingByGroup[groupMeta.key];
-          const failedInfo = failedUploadByGroup[groupMeta.key];
-          const canUpload = groupList.length < groupMeta.maxCount && !uploadingInfo && !readOnly;
-          const groupSorting = Boolean(sortingByGroup[groupMeta.key]);
+          const groupFileList = fileListByGroup[groupMeta.key] || [];
 
           const handleUploadRequest = async ({ file, onSuccess, onError, onProgress }) => {
             try {
@@ -82,96 +103,30 @@ export default function ImagesModule({
                 <p className="hotel-info__image-group-desc">{groupMeta.desc}</p>
                 <p className="hotel-info__image-group-limit">最多上传 {groupMeta.maxCount} 张</p>
               </div>
-
-              <div className="hotel-info__image-grid">
-                {groupList.map((item) => {
-                  const imageUrl = resolveImageUrl(item.filePath);
-                  const isDeleting = Boolean(deletingImageIds[item.id]);
-                  const isDragOver = dragOverTargetByGroup[groupMeta.key] === item.id;
-                  return (
-                    <div
-                      key={item.id}
-                      className={`hotel-info__image-item ${isDragOver ? 'is-drag-over' : ''}`}
-                      draggable={!groupSorting && !readOnly}
-                      onDragStart={() => onDragStartImage(groupMeta.key, item.id, groupSorting || readOnly)}
-                      onDragOver={(event) => onDragOverImage(event, groupMeta.key, item.id, groupSorting || readOnly)}
-                      onDragLeave={() => onDragLeaveImage(groupMeta.key)}
-                      onDrop={(event) => {
-                        if (readOnly) return;
-                        onDropImage(event, groupMeta.key, item.id);
-                      }}
-                      onDragEnd={() => onDragEndImage(groupMeta.key)}
-                    >
-                      <img src={imageUrl} alt={groupMeta.title} />
-                      <div className="hotel-info__image-item-mask">
-                        <Button
-                          type="text"
-                          size="small"
-                          icon={<EyeOutlined />}
-                          onClick={() => onPreviewImage(imageUrl, groupMeta.title)}
-                        >
-                          预览
-                        </Button>
-                        <Button
-                          type="text"
-                          size="small"
-                          danger
-                          icon={<DeleteOutlined />}
-                          loading={isDeleting}
-                          disabled={isDeleting || readOnly}
-                          onClick={() => onDeleteImage(groupMeta.key, item.id)}
-                        >
-                          删除
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {uploadingInfo ? (
-                  <div className="hotel-info__image-item hotel-info__image-item--uploading">
-                    <div className="hotel-info__image-uploading-title">
-                      <LoadingOutlined /> 上传中
-                    </div>
-                    <div className="hotel-info__image-uploading-name">{uploadingInfo.fileName}</div>
-                    <Progress percent={Math.max(1, Math.min(99, Number(uploadingInfo.percent) || 0))} size="small" />
-                  </div>
-                ) : null}
-
-                {failedInfo ? (
-                  <div className="hotel-info__image-item hotel-info__image-item--error">
-                    <div className="hotel-info__image-error-title">上传失败，请重新上传</div>
-                    <div className="hotel-info__image-error-name">{failedInfo.fileName}</div>
-                    <Button
-                      type="link"
-                      onClick={async () => {
-                        try {
-                          await uploadHotelImage(groupMeta.key, failedInfo.file);
-                        } catch (error) {
-                          // 错误提示已在上传方法内处理
-                        }
-                      }}
-                    >
-                      重新上传
-                    </Button>
-                  </div>
-                ) : null}
-
-                {canUpload ? (
-                  <Upload
-                    showUploadList={false}
-                    beforeUpload={beforeHotelImageUpload}
-                    customRequest={handleUploadRequest}
-                    accept=".jpg,.jpeg,.png"
-                    disabled={groupSorting || readOnly}
-                  >
-                    <button type="button" className="hotel-info__upload-trigger" disabled={groupSorting || readOnly}>
-                      <PlusOutlined />
-                      <span>上传图片</span>
-                    </button>
-                  </Upload>
-                ) : null}
-              </div>
+              <Upload
+                listType="picture-card"
+                fileList={groupFileList}
+                beforeUpload={beforeHotelImageUpload}
+                customRequest={handleUploadRequest}
+                accept=".jpg,.jpeg,.png"
+                disabled={readOnly}
+                maxCount={groupMeta.maxCount}
+                onChange={({ fileList }) => handleFileListChange(groupMeta.key, fileList)}
+                onPreview={handlePreview}
+                onRemove={async (file) => {
+                  if (readOnly) return false;
+                  const imageId = file?.response?.id || Number(file?.uid);
+                  if (!imageId) return false;
+                  try {
+                    await onDeleteImage(groupMeta.key, imageId);
+                    return true;
+                  } catch (error) {
+                    return false;
+                  }
+                }}
+              >
+                {groupFileList.length >= groupMeta.maxCount || readOnly ? null : uploadButton}
+              </Upload>
 
               {groupIndex < hotelImageGroups.length - 1 ? <Divider style={{ margin: '24px 0 0' }} /> : null}
             </div>
@@ -179,6 +134,20 @@ export default function ImagesModule({
         })}
       </Card>
       {actionsNode}
+
+      {previewImage ? (
+        <Image
+          style={{ display: 'none' }}
+          preview={{
+            open: previewOpen,
+            onOpenChange: setPreviewOpen,
+            afterOpenChange: (open) => {
+              if (!open) setPreviewImage('');
+            },
+          }}
+          src={previewImage}
+        />
+      ) : null}
     </>
   );
 }

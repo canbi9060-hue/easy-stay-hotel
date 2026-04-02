@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  Button,
   Form,
-  Modal,
   Spin,
   Tag,
   message,
@@ -77,12 +75,6 @@ const hasAddressTextInput = (address) => {
   const detail = typeof address?.detail === 'string' ? address.detail.trim() : '';
   return Boolean(getDeepestRegionKeyword(address) || detail);
 };
-const hasAddressInput = (address) => {
-  const detail = typeof address?.detail === 'string' ? address.detail.trim() : '';
-  const coordinates = getValidCoordinates(address);
-  const hasMeaningfulCoordinates = coordinates && !isDefaultCenterCoordinates(coordinates);
-  return Boolean(getDeepestRegionKeyword(address) || detail || hasMeaningfulCoordinates);
-};
 const getOptionCoordinates = (options, value) => {
   if (!Array.isArray(options) || !value) {
     return null;
@@ -136,39 +128,20 @@ export default function HotelInfo() {
 
   const {
     hotelImages,
-    uploadingByGroup,
-    failedUploadByGroup,
     imageLoadError,
-    deletingImageIds,
-    sortingByGroup,
-    dragOverTargetByGroup,
-    imagePreview,
     beforeHotelImageUpload,
     uploadHotelImage,
     handleDeleteHotelImage,
-    handleImageDrop,
-    handleImageDragStart,
-    handleImageDragOver,
-    handleImageDragLeave,
-    handleImageDragEnd,
-    handleImagePreview,
-    closeImagePreview,
     loadHotelImages,
     handleRetryLoadImages,
     resetHotelImagesState,
   } = useHotelImagesManager({ getErrorMessage });
   const {
     hotelCertificates,
-    uploadingByGroup: certificateUploadingByGroup,
-    failedUploadByGroup: certificateFailedUploadByGroup,
     certificateLoadError,
-    deletingCertificateIds,
-    certificatePreview,
     beforeCertificateUpload,
     uploadHotelCertificate,
     handleDeleteHotelCertificate,
-    handleCertificatePreview,
-    closeCertificatePreview,
     loadHotelCertificates,
     handleRetryLoadCertificates,
     resetHotelCertificatesState,
@@ -190,9 +163,7 @@ export default function HotelInfo() {
   const isReviewing = reviewStatus === 'reviewing';
   const isCertificatesTab = activeTab === 'certificates';
   const hasRequiredCertificates = reviewRequiredCertificateGroupKeys.every((groupKey) => (hotelCertificates[groupKey] || []).length > 0);
-  const hasCertificateUploading = Object.values(certificateUploadingByGroup).some(Boolean);
-  const hasCertificateDeleting = Object.values(deletingCertificateIds).some(Boolean);
-  const canSubmitReview = !isReviewing && hasRequiredCertificates && !hasCertificateUploading && !hasCertificateDeleting;
+  const canSubmitReview = !isReviewing && hasRequiredCertificates;
   const tabOrder = useMemo(() => hotelInfoTabs.map((item) => item.key), []);
   const activeTabIndex = tabOrder.indexOf(activeTab);
   const hasPrevTab = activeTabIndex > 0;
@@ -212,7 +183,7 @@ export default function HotelInfo() {
   }, [addressTextInput, addressValue]);
   const displayCoordinates = currentCoordinates || initialCoordinates;
   const mapUnavailableReason = (!amapJsKey || !amapWebKey)
-    ? 'Map is unavailable: configure REACT_APP_AMAP_JS_KEY and REACT_APP_AMAP_WEB_KEY in .env, then restart the app.'
+    ? '地图不可用：请在 .env 中配置 REACT_APP_AMAP_JS_KEY 和 REACT_APP_AMAP_WEB_KEY，并重启应用。'
     : '';
 
   const saveAddressDraftToSession = useCallback((address, { silent = true, mode = 'manual' } = {}) => {
@@ -682,6 +653,8 @@ export default function HotelInfo() {
   const handleDistrictChange = (value) => {
     hasManualSelectionRef.current = false;
     const nextAddress = updateAddressField({ district: value, latitude: null, longitude: null });
+    setAddressLocateError('');
+    setPointPickError('');
     const optionCoordinates = getOptionCoordinates(districtOptions, value);
     if (optionCoordinates) {
       form.setFieldsValue({ address: { ...nextAddress, ...optionCoordinates } });
@@ -710,7 +683,7 @@ export default function HotelInfo() {
 
   const handleManualAddressLocate = async () => {
     if (isReviewing) return;
-    if (!hasAddressInput(addressValue)) {
+    if (!hasAddressTextInput(addressValue)) {
       message.warning('请先填写省市区或详细地址。');
       return;
     }
@@ -828,7 +801,7 @@ export default function HotelInfo() {
 
   const renderMapAlerts = () => (
     <>
-      {mapUnavailableReason ? <Alert type="warning" showIcon message="Map unavailable" description={mapUnavailableReason} style={{ marginBottom: 12 }} /> : null}
+      {mapUnavailableReason ? <Alert type="warning" showIcon message="地图不可用" description={mapUnavailableReason} style={{ marginBottom: 12 }} /> : null}
       {mapLoadError ? <Alert type="warning" showIcon message="地图加载失败" description={mapLoadError} style={{ marginBottom: 12 }} /> : null}
       {addressLocateError ? <Alert type="warning" showIcon message="根据地址定位失败" description={addressLocateError} style={{ marginBottom: 12 }} /> : null}
       {pointPickError ? <Alert type="warning" showIcon message="根据地图选点回填地址失败" description={pointPickError} style={{ marginBottom: 12 }} /> : null}
@@ -882,6 +855,12 @@ export default function HotelInfo() {
               handleSaveAddressDraft={handleSaveAddressDraft}
               handleManualAddressLocate={handleManualAddressLocate}
               setMapModalOpen={setMapModalOpen}
+              mapModalOpen={mapModalOpen}
+              modalMapContainerRef={modalMapContainerRef}
+              mapLoadError={mapLoadError}
+              onMapModalAfterOpenChange={(open) => {
+                if (!open) destroyMapInstance(modalBindings);
+              }}
               mapStatusText={mapStatusText}
               mapUnavailableReason={mapUnavailableReason}
               mapActionDisabled={isReviewing || Boolean(mapUnavailableReason)}
@@ -901,17 +880,6 @@ export default function HotelInfo() {
                 imageLoadError={imageLoadError}
                 onRetryLoadImages={handleRetryLoadImages}
                 hotelImages={hotelImages}
-                uploadingByGroup={uploadingByGroup}
-                failedUploadByGroup={failedUploadByGroup}
-                sortingByGroup={sortingByGroup}
-                deletingImageIds={deletingImageIds}
-                dragOverTargetByGroup={dragOverTargetByGroup}
-                onDragStartImage={handleImageDragStart}
-                onDragOverImage={handleImageDragOver}
-                onDragLeaveImage={handleImageDragLeave}
-                onDropImage={handleImageDrop}
-                onDragEndImage={handleImageDragEnd}
-                onPreviewImage={handleImagePreview}
                 onDeleteImage={handleDeleteHotelImage}
                 uploadHotelImage={uploadHotelImage}
                 beforeHotelImageUpload={beforeHotelImageUpload}
@@ -943,10 +911,6 @@ export default function HotelInfo() {
                     certificateLoadError={certificateLoadError}
                     onRetryLoadCertificates={handleRetryLoadCertificates}
                     hotelCertificates={hotelCertificates}
-                    uploadingByGroup={certificateUploadingByGroup}
-                    failedUploadByGroup={certificateFailedUploadByGroup}
-                    deletingCertificateIds={deletingCertificateIds}
-                    onPreviewCertificate={handleCertificatePreview}
                     onDeleteCertificate={handleDeleteHotelCertificate}
                     uploadHotelCertificate={uploadHotelCertificate}
                     beforeCertificateUpload={beforeCertificateUpload}
@@ -958,62 +922,6 @@ export default function HotelInfo() {
                 )
                 : null}
       </Form>
-
-      <Modal
-        open={mapModalOpen}
-        width={960}
-        title="地图预览"
-        footer={null}
-        forceRender
-        onCancel={() => setMapModalOpen(false)}
-        afterOpenChange={(open) => {
-          if (!open) destroyMapInstance(modalBindings);
-        }}
-        destroyOnHidden
-      >
-        {mapUnavailableReason || mapLoadError ? (
-          <Alert type="warning" showIcon message={mapUnavailableReason ? 'Map unavailable' : 'Map load failed'} description={mapUnavailableReason || mapLoadError} />
-        ) : (
-            <div className="hotel-info__map-shell hotel-info__map-shell--modal">
-              <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
-              <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={isReviewing}>暂存定位</Button>
-              <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={isReviewing}>按输入地址定位</Button>
-              {mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
-            </div>
-          )}
-      </Modal>
-
-      <Modal
-        open={imagePreview.open}
-        title={imagePreview.title || '图片预览'}
-        footer={null}
-        onCancel={closeImagePreview}
-        destroyOnHidden
-      >
-        {imagePreview.url ? (
-          <img
-            src={imagePreview.url}
-            alt={imagePreview.title || '酒店图片'}
-            style={{ width: '100%', borderRadius: 12 }}
-          />
-        ) : null}
-      </Modal>
-
-      <Modal
-        open={certificatePreview.open}
-        title={certificatePreview.title || '证件预览'}
-        footer={null}
-        onCancel={closeCertificatePreview}
-        destroyOnHidden
-      >
-        {certificatePreview.url ? (
-          <img
-            src={certificatePreview.url}
-            alt={certificatePreview.title || '资质证件'}
-            style={{ width: '100%', borderRadius: 12 }}
-          />
-        ) : null}
-      </Modal>
     </div>
   );
 }

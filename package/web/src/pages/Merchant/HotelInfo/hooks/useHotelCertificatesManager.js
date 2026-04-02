@@ -22,15 +22,8 @@ export default function useHotelCertificatesManager({
   certificateLoadMessageKey = defaultCertificateLoadMessageKey,
 }) {
   const [hotelCertificates, setHotelCertificates] = useState(createEmptyHotelCertificates);
-  const [uploadingByGroup, setUploadingByGroup] = useState({});
-  const [failedUploadByGroup, setFailedUploadByGroup] = useState({});
   const [certificateLoadError, setCertificateLoadError] = useState('');
   const [deletingCertificateIds, setDeletingCertificateIds] = useState({});
-  const [certificatePreview, setCertificatePreview] = useState({
-    open: false,
-    url: '',
-    title: '',
-  });
 
   const beforeCertificateUpload = useCallback((file) => {
     const validation = validateImageUploadFile(file);
@@ -51,19 +44,6 @@ export default function useHotelCertificatesManager({
         return;
       }
 
-      setFailedUploadByGroup((prev) => {
-        if (!prev[groupKey]) return prev;
-        return removeKey(prev, groupKey);
-      });
-      setUploadingByGroup((prev) => ({
-        ...prev,
-        [groupKey]: {
-          file,
-          fileName: file?.name || '证件上传中',
-          percent: 0,
-        },
-      }));
-
       try {
         const formData = new FormData();
         formData.append('group', groupKey);
@@ -71,15 +51,6 @@ export default function useHotelCertificatesManager({
 
         const uploadRes = await uploadMerchantHotelCertificateAPI(formData, ({ loaded, total }) => {
           const percent = calculateUploadPercent({ loaded, total });
-          setUploadingByGroup((prev) => ({
-            ...prev,
-            [groupKey]: {
-              ...prev[groupKey],
-              file,
-              fileName: file?.name || '证件上传中',
-              percent,
-            },
-          }));
           if (typeof onProgress === 'function') {
             onProgress(percent);
           }
@@ -92,21 +63,8 @@ export default function useHotelCertificatesManager({
         message.success('资质证件上传成功。');
       } catch (error) {
         const errorMsg = getErrorMessage(error, '资质证件上传失败。');
-        setFailedUploadByGroup((prev) => ({
-          ...prev,
-          [groupKey]: {
-            file,
-            fileName: file?.name || '上传失败证件',
-            errorMsg,
-          },
-        }));
         message.error(errorMsg);
         throw error;
-      } finally {
-        setUploadingByGroup((prev) => {
-          if (!prev[groupKey]) return prev;
-          return removeKey(prev, groupKey);
-        });
       }
     },
     [getErrorMessage, hotelCertificates]
@@ -134,20 +92,13 @@ export default function useHotelCertificatesManager({
           [groupKey]: groupSnapshot,
         }));
         message.error(getErrorMessage(error, '删除资质证件失败。'));
+        throw error;
       } finally {
         setDeletingCertificateIds((prev) => removeKey(prev, certificateId));
       }
     },
     [deletingCertificateIds, getErrorMessage, hotelCertificates]
   );
-
-  const handleCertificatePreview = useCallback((url, title) => {
-    setCertificatePreview({ open: true, url, title });
-  }, []);
-
-  const closeCertificatePreview = useCallback(() => {
-    setCertificatePreview({ open: false, url: '', title: '' });
-  }, []);
 
   const loadHotelCertificates = useCallback(
     async ({ notify = false } = {}) => {
@@ -179,25 +130,17 @@ export default function useHotelCertificatesManager({
 
   const resetHotelCertificatesState = useCallback(() => {
     setHotelCertificates(createEmptyHotelCertificates());
-    setUploadingByGroup({});
-    setFailedUploadByGroup({});
     setCertificateLoadError('');
     setDeletingCertificateIds({});
-    setCertificatePreview({ open: false, url: '', title: '' });
   }, []);
 
   return {
     hotelCertificates,
-    uploadingByGroup,
-    failedUploadByGroup,
     certificateLoadError,
     deletingCertificateIds,
-    certificatePreview,
     beforeCertificateUpload,
     uploadHotelCertificate,
     handleDeleteHotelCertificate,
-    handleCertificatePreview,
-    closeCertificatePreview,
     loadHotelCertificates,
     handleRetryLoadCertificates,
     resetHotelCertificatesState,
