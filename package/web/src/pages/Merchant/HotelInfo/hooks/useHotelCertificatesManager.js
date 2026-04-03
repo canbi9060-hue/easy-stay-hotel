@@ -137,7 +137,6 @@ export default function useHotelCertificatesManager({
   return {
     hotelCertificates,
     certificateLoadError,
-    deletingCertificateIds,
     beforeCertificateUpload,
     uploadHotelCertificate,
     handleDeleteHotelCertificate,

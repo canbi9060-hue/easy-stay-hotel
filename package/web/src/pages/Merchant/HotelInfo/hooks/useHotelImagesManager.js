@@ -125,7 +125,6 @@ export default function useHotelImagesManager({ getErrorMessage, imageLoadMessag
   return {
     hotelImages,
     imageLoadError,
-    deletingImageIds,
     beforeHotelImageUpload,
     uploadHotelImage,
     handleDeleteHotelImage,

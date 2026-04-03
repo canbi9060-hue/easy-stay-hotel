@@ -34,7 +34,6 @@ export default function BasicInfoModule({
   renderMapAlerts,
   previewMapContainerRef,
   handleSaveAddressDraft,
-  handleManualAddressLocate,
   setMapModalOpen,
   mapModalOpen,
   modalMapContainerRef,
@@ -102,7 +101,6 @@ export default function BasicInfoModule({
                     <div className="hotel-info__map-preview" ref={previewMapContainerRef} />
                   )}
                   <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly || mapActionDisabled}>暂存定位</Button>
-                  <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={readOnly || mapActionDisabled}>按输入地址定位</Button>
                   <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={readOnly || mapActionDisabled}>展开地图</Button>
                   {!mapUnavailableReason && mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
                 </div>
@@ -184,7 +182,6 @@ export default function BasicInfoModule({
           <div className="hotel-info__map-shell hotel-info__map-shell--modal">
             <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
             <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly}>暂存定位</Button>
-            <Button className="hotel-info__map-locate" onClick={handleManualAddressLocate} disabled={readOnly}>按输入地址定位</Button>
             {mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
           </div>
         )}

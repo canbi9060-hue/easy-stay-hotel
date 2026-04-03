@@ -17,6 +17,12 @@ const toUploadFileItem = (item, resolveImageUrl) => ({
   response: item,
 });
 
+const mapGroupFileList = (hotelCertificates, resolveImageUrl) =>
+  Object.keys(hotelCertificates || {}).reduce((acc, groupKey) => {
+    acc[groupKey] = (hotelCertificates[groupKey] || []).map((item) => toUploadFileItem(item, resolveImageUrl));
+    return acc;
+  }, {});
+
 const renderGroupUploadArea = ({
   groupMeta,
   groupFileList,
@@ -92,11 +98,7 @@ export default function CertificatesModule({
   const [fileListByGroup, setFileListByGroup] = useState({});
 
   useEffect(() => {
-    const nextFileList = {};
-    Object.keys(hotelCertificates || {}).forEach((groupKey) => {
-      nextFileList[groupKey] = (hotelCertificates[groupKey] || []).map((item) => toUploadFileItem(item, resolveImageUrl));
-    });
-    setFileListByGroup(nextFileList);
+    setFileListByGroup(mapGroupFileList(hotelCertificates, resolveImageUrl));
   }, [hotelCertificates, resolveImageUrl]);
 
   const handleFileListChange = (groupKey, nextFileList) => {
