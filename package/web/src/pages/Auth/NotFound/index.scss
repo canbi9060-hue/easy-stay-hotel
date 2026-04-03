@@ -1,0 +1,103 @@
+.not-found-page {
+  position: relative;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 16%, rgba(70, 153, 255, 0.18), transparent 36%),
+    radial-gradient(circle at 88% 82%, rgba(63, 195, 128, 0.16), transparent 34%),
+    linear-gradient(180deg, #f7fbff 0%, #edf4fb 100%);
+}
+
+.not-found-page__bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.not-found-page__bg-glow--left {
+  width: 300px;
+  height: 300px;
+  left: -120px;
+  top: -120px;
+  background: rgba(64, 141, 255, 0.2);
+}
+
+.not-found-page__bg-glow--right {
+  width: 280px;
+  height: 280px;
+  right: -110px;
+  bottom: -110px;
+  background: rgba(62, 186, 130, 0.18);
+}
+
+.not-found-page__card {
+  position: relative;
+  z-index: 1;
+  width: min(680px, 100%);
+  padding: 40px 36px;
+  border-radius: 24px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(230, 238, 247, 0.9);
+  box-shadow: 0 16px 44px rgba(26, 46, 78, 0.12);
+}
+
+.not-found-page__code {
+  font-size: clamp(66px, 12vw, 118px);
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 3px;
+  color: #1b2f4f;
+  margin-bottom: 10px;
+}
+
+.not-found-page__title {
+  margin: 0;
+  font-size: clamp(26px, 4vw, 34px);
+  font-weight: 700;
+  color: #223652;
+}
+
+.not-found-page__desc {
+  margin: 16px auto 0;
+  font-size: 15px;
+  line-height: 1.8;
+  color: #5f738f;
+}
+
+.not-found-page__actions {
+  margin-top: 28px;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+}
+
+.not-found-page__actions .ant-btn {
+  min-width: 140px;
+  height: 44px;
+  border-radius: 12px;
+}
+
+.not-found-page__actions .ant-btn a {
+  color: inherit;
+}
+
+@media (max-width: 600px) {
+  .not-found-page__card {
+    padding: 34px 20px;
+    border-radius: 18px;
+  }
+
+  .not-found-page__actions {
+    flex-direction: column;
+  }
+
+  .not-found-page__actions .ant-btn {
+    width: 100%;
+  }
+}
