@@ -86,14 +86,14 @@ const uploadHotelImageByMerchantId = async (merchantUserId, imageGroup, file) =>
 };
 
 const deleteHotelImageByMerchantId = async (merchantUserId, imageId) => {
-  await withTransaction(async (tx) => {
+  const targetImage = await withTransaction(async (tx) => {
     await lockMerchantRow(tx, merchantUserId);
     const editableResult = await ensureMerchantHotelEditable(merchantUserId, tx);
     if (!editableResult.ok) {
       throw createHandlerError('validation', editableResult.message, editableResult.field);
     }
 
-    const [targetImage] = await runQuery(
+    const [row] = await runQuery(
       tx,
       `SELECT * FROM merchant_hotel_images
        WHERE id = ? AND merchant_user_id = ?
@@ -102,7 +102,7 @@ const deleteHotelImageByMerchantId = async (merchantUserId, imageId) => {
       [imageId, merchantUserId]
     );
 
-    if (!targetImage) {
+    if (!row) {
       throw createHandlerError('notFound', '图片不存在或无权限删除', 'id');
     }
 
@@ -111,12 +111,18 @@ const deleteHotelImageByMerchantId = async (merchantUserId, imageId) => {
       `DELETE FROM merchant_hotel_images WHERE id = ? AND merchant_user_id = ?`,
       [imageId, merchantUserId]
     );
-
-    const fileResult = deleteLocalHotelImageSafely(targetImage.file_path);
-    if (!fileResult.ok && !fileResult.missing) {
-      throw createHandlerError('server', fileResult.message || '删除本地图片文件失败');
-    }
+    return row;
   });
+
+  const fileResult = deleteLocalHotelImageSafely(targetImage.file_path);
+  if (!fileResult.ok && !fileResult.missing) {
+    console.warn('删除本地酒店图片失败，已删除数据库记录:', {
+      imageId,
+      merchantUserId,
+      filePath: targetImage.file_path,
+      reason: fileResult.message,
+    });
+  }
 };
 
 const sortHotelImagesByMerchantId = async (merchantUserId, imageGroup, orderedIds) => {
@@ -237,14 +243,14 @@ const uploadHotelCertificateByMerchantId = async (merchantUserId, certGroup, fil
 };
 
 const deleteHotelCertificateByMerchantId = async (merchantUserId, certificateId) => {
-  await withTransaction(async (tx) => {
+  const targetCertificate = await withTransaction(async (tx) => {
     await lockMerchantRow(tx, merchantUserId);
     const editableResult = await ensureMerchantHotelEditable(merchantUserId, tx);
     if (!editableResult.ok) {
       throw createHandlerError('validation', editableResult.message, editableResult.field);
     }
 
-    const [targetCertificate] = await runQuery(
+    const [row] = await runQuery(
       tx,
       `SELECT * FROM merchant_hotel_certificates
        WHERE id = ? AND merchant_user_id = ?
@@ -253,7 +259,7 @@ const deleteHotelCertificateByMerchantId = async (merchantUserId, certificateId)
       [certificateId, merchantUserId]
     );
 
-    if (!targetCertificate) {
+    if (!row) {
       throw createHandlerError('notFound', '证件不存在或无权限删除', 'id');
     }
 
@@ -262,12 +268,18 @@ const deleteHotelCertificateByMerchantId = async (merchantUserId, certificateId)
       `DELETE FROM merchant_hotel_certificates WHERE id = ? AND merchant_user_id = ?`,
       [certificateId, merchantUserId]
     );
-
-    const fileResult = deleteLocalHotelCertificateSafely(targetCertificate.file_path);
-    if (!fileResult.ok && !fileResult.missing) {
-      throw createHandlerError('server', fileResult.message || '删除本地证件文件失败');
-    }
+    return row;
   });
+
+  const fileResult = deleteLocalHotelCertificateSafely(targetCertificate.file_path);
+  if (!fileResult.ok && !fileResult.missing) {
+    console.warn('删除本地资质证件失败，已删除数据库记录:', {
+      certificateId,
+      merchantUserId,
+      filePath: targetCertificate.file_path,
+      reason: fileResult.message,
+    });
+  }
 };
 
 const validateReviewRequiredImages = async (merchantUserId) => {

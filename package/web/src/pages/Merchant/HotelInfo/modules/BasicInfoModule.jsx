@@ -128,12 +128,12 @@ export default function BasicInfoModule({
               </div>
               <Row gutter={10}>
                 <Col span={12}>
-                  <Form.Item name={['operationRules', 'businessStartTime']} noStyle={false}>
+                  <Form.Item name={['operationRules', 'businessStartTime']}>
                     <Input type="time" disabled={Boolean(isOpen24Hours)} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
-                  <Form.Item name={['operationRules', 'businessEndTime']} noStyle={false}>
+                  <Form.Item name={['operationRules', 'businessEndTime']}>
                     <Input type="time" disabled={Boolean(isOpen24Hours)} />
                   </Form.Item>
                 </Col>

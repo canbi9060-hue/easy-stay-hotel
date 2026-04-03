@@ -51,12 +51,14 @@ export default function useHotelImagesManager({ getErrorMessage, imageLoadMessag
           onProgress(percent);
         }
       });
+      const uploadedImage = uploadRes?.data?.image || null;
 
       setHotelImages((prev) => ({
         ...prev,
-        [groupKey]: [...(prev[groupKey] || []), uploadRes?.data?.image].filter(Boolean),
+        [groupKey]: [...(prev[groupKey] || []), uploadedImage].filter(Boolean),
       }));
       message.success('酒店图片上传成功。');
+      return uploadedImage;
     } catch (error) {
       const errorMsg = getErrorMessage(error, '酒店图片上传失败。');
       message.error(errorMsg);

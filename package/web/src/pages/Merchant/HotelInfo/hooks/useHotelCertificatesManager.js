@@ -55,12 +55,14 @@ export default function useHotelCertificatesManager({
             onProgress(percent);
           }
         });
+        const uploadedImage = uploadRes?.data?.image || null;
 
         setHotelCertificates((prev) => ({
           ...prev,
-          [groupKey]: [...(prev[groupKey] || []), uploadRes?.data?.image].filter(Boolean),
+          [groupKey]: [...(prev[groupKey] || []), uploadedImage].filter(Boolean),
         }));
         message.success('资质证件上传成功。');
+        return uploadedImage;
       } catch (error) {
         const errorMsg = getErrorMessage(error, '资质证件上传失败。');
         message.error(errorMsg);
