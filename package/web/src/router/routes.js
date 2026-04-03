@@ -19,8 +19,8 @@ const Housekeeping = lazy(() => import('../pages/Merchant/Housekeeping'));
 const RoomStatus = lazy(() => import('../pages/Merchant/RoomStatus'));
 const AdminLayout = lazy(() => import('../pages/Admin/layout'));
 const AdminDashboard = lazy(() => import('../pages/Admin/Dashboard'));
-const Profile = lazy(() => import('../pages/Profile'));
-const NotFound = lazy(() => import('../pages/NotFound'));
+const Profile = lazy(() => import('../pages/Auth/Profile'));
+const NotFound = lazy(() => import('../pages/Auth/NotFound'));
 
 const adminMeta = { requiresAuth: true, role: 'admin' };
 const merchantMeta = { requiresAuth: true, role: 'merchant' };

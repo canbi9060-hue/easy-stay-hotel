@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Avatar, Button, Card, Col, Form, Input, Row, Upload, message } from 'antd';
 import {
@@ -9,14 +9,14 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 
-import defaultAvatar from '../../assets/images/default-avatar.svg';
-import { fetchUserInfo, setUserInfo } from '../../store/slices/userSlice';
-import { getFileUrl, updateProfileAPI, uploadAvatarAPI } from '../../utils/request';
+import defaultAvatar from '../../../assets/images/default-avatar.svg';
+import { fetchUserInfo, setUserInfo } from '../../../store/slices/userSlice';
+import { getFileUrl, updateProfileAPI, uploadAvatarAPI } from '../../../utils/request';
 import {
   validateEmail,
   validatePhone,
   validateProfileName,
-} from '../../utils/validateRules';
+} from '../../../utils/validateRules';
 import './index.scss';
 
 const roleLabelMap = {
