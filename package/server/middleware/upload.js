@@ -5,9 +5,11 @@ const multer = require('multer');
 const avatarDir = path.join(__dirname, '..', 'uploads', 'avatars');
 const hotelImageDir = path.join(__dirname, '..', 'uploads', 'hotel-images');
 const hotelCertificateDir = path.join(__dirname, '..', 'uploads', 'hotel-certificates');
+const roomTypeImageDir = path.join(__dirname, '..', 'uploads', 'room-type-images');
 fs.mkdirSync(avatarDir, { recursive: true });
 fs.mkdirSync(hotelImageDir, { recursive: true });
 fs.mkdirSync(hotelCertificateDir, { recursive: true });
+fs.mkdirSync(roomTypeImageDir, { recursive: true });
 
 const avatarStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -36,18 +38,45 @@ const avatarUpload = multer({
 });
 
 const supportedHotelImageMimes = new Set(['image/jpeg', 'image/png']);
-const hotelImageStorage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, hotelImageDir);
+const hotelProfileMediaFieldConfig = {
+  hotelImageFiles: {
+    dir: hotelImageDir,
+    prefix: 'hotel-image',
+    maxCount: 14,
+  },
+  hotelCertificateFiles: {
+    dir: hotelCertificateDir,
+    prefix: 'hotel-certificate',
+    maxCount: 7,
+  },
+};
+
+const resolveSafeImageExtension = (file) => {
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  return ext === '.jpg' || ext === '.jpeg' || ext === '.png' ? ext : '.jpg';
+};
+
+const hotelProfileMediaStorage = multer.diskStorage({
+  destination: (_req, file, cb) => {
+    const config = hotelProfileMediaFieldConfig[file?.fieldname];
+    if (!config) {
+      return cb(new Error('不支持的酒店媒体字段'));
+    }
+    cb(null, config.dir);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const safeExt = ext === '.jpg' || ext === '.jpeg' || ext === '.png' ? ext : '.jpg';
-    cb(null, `hotel-image-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+    const config = hotelProfileMediaFieldConfig[file?.fieldname];
+    if (!config) {
+      return cb(new Error('不支持的酒店媒体字段'));
+    }
+    cb(null, `${config.prefix}-${Date.now()}-${Math.round(Math.random() * 1e9)}${resolveSafeImageExtension(file)}`);
   },
 });
 
-const hotelImageFileFilter = (_req, file, cb) => {
+const hotelProfileMediaFileFilter = (_req, file, cb) => {
+  if (!hotelProfileMediaFieldConfig[file?.fieldname]) {
+    return cb(new Error('不支持的酒店媒体字段'));
+  }
   if (!supportedHotelImageMimes.has(file?.mimetype)) {
     return cb(new Error('仅支持 JPG/PNG 格式图片'));
   }
@@ -55,26 +84,27 @@ const hotelImageFileFilter = (_req, file, cb) => {
   cb(null, true);
 };
 
-const hotelImageUpload = multer({
-  storage: hotelImageStorage,
-  fileFilter: hotelImageFileFilter,
+const hotelProfileMediaUpload = multer({
+  storage: hotelProfileMediaStorage,
+  fileFilter: hotelProfileMediaFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024,
+    files: 21,
   },
 });
 
-const hotelCertificateStorage = multer.diskStorage({
+const roomTypeImageStorage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, hotelCertificateDir);
+    cb(null, roomTypeImageDir);
   },
   filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
     const safeExt = ext === '.jpg' || ext === '.jpeg' || ext === '.png' ? ext : '.jpg';
-    cb(null, `hotel-certificate-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
+    cb(null, `room-type-image-${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`);
   },
 });
 
-const hotelCertificateFileFilter = (_req, file, cb) => {
+const roomTypeImageFileFilter = (_req, file, cb) => {
   if (!supportedHotelImageMimes.has(file?.mimetype)) {
     return cb(new Error('仅支持 JPG/PNG 格式图片'));
   }
@@ -82,16 +112,26 @@ const hotelCertificateFileFilter = (_req, file, cb) => {
   cb(null, true);
 };
 
-const hotelCertificateUpload = multer({
-  storage: hotelCertificateStorage,
-  fileFilter: hotelCertificateFileFilter,
+const roomTypeImageUpload = multer({
+  storage: roomTypeImageStorage,
+  fileFilter: roomTypeImageFileFilter,
   limits: {
     fileSize: 5 * 1024 * 1024,
+    files: 12,
   },
 });
 
 module.exports = {
   avatarUpload: avatarUpload.single('avatar'),
-  hotelImageUpload: hotelImageUpload.single('image'),
-  hotelCertificateUpload: hotelCertificateUpload.single('image'),
+  hotelProfileMediaUpload: hotelProfileMediaUpload.fields([
+    {
+      name: 'hotelImageFiles',
+      maxCount: hotelProfileMediaFieldConfig.hotelImageFiles.maxCount,
+    },
+    {
+      name: 'hotelCertificateFiles',
+      maxCount: hotelProfileMediaFieldConfig.hotelCertificateFiles.maxCount,
+    },
+  ]),
+  roomTypeImageUpload: roomTypeImageUpload.array('images', 12),
 };

@@ -14,13 +14,11 @@ const {
   defaultProfile,
 } = require('./constants');
 const {
-  safeTrim,
-  parseJsonArray,
-  parseJsonObject,
   normalizeTags,
   normalizeFacilitySelections,
   normalizeCustomFacilities,
 } = require('./helpers');
+const { safeTrim, parseJsonArray, parseJsonObject } = require('../../utils/common');
 const { getMerchantReviewStatus } = require('./repository');
 
 const validateTime = (value, field, label) => {
@@ -294,6 +292,11 @@ const saveHotelProfile = async (merchantUserId, normalizedPayload, options = {})
     VALUES (${placeholders})
     ON DUPLICATE KEY UPDATE ${updates}
   `;
+
+  if (options.executor?.query) {
+    await options.executor.query(sql, values);
+    return;
+  }
 
   await query(sql, values);
 };

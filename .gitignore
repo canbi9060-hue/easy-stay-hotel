@@ -37,3 +37,6 @@ pnpm-debug.log*
 # 临时文件
 *.tmp
 *.temp
+
+# 本地数据库备份
+package/server/db/backups/

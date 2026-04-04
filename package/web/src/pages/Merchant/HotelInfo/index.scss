@@ -285,6 +285,12 @@
   color: var(--hi-module-title-color);
 }
 
+.hotel-info__facility-hint {
+  margin: -6px 0 14px;
+  font-size: 13px;
+  color: var(--hi-text-muted);
+}
+
 .hotel-info__facility-options {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

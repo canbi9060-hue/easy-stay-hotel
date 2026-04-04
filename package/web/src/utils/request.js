@@ -30,7 +30,7 @@ request.interceptors.response.use(
     }
 
     return Promise.reject({
-      errorMsg: data?.msg || 'Request failed.',
+      errorMsg: data?.msg || '请求失败，请稍后重试。',
       field: data?.data?.field || '',
       errorCode: data?.code || 400,
       errorType: data?.errorType || 'UNKNOWN_ERROR',
@@ -38,14 +38,14 @@ request.interceptors.response.use(
     });
   },
   (error) => {
-    let errorMsg = 'Network error. Please try again later.';
+    let errorMsg = '网络异常，请稍后重试。';
     let field = '';
     let errorCode = 500;
     let errorType = 'SERVER_ERROR';
 
     if (error.response) {
       const res = error.response.data;
-      errorMsg = res?.msg || `Request failed (status: ${error.response.status}).`;
+      errorMsg = res?.msg || `请求失败（状态码：${error.response.status}）`;
       field = res?.data?.field || '';
       errorCode = res?.code || error.response.status;
       errorType = res?.errorType || 'UNKNOWN_ERROR';
@@ -67,6 +67,9 @@ request.interceptors.response.use(
     });
   }
 );
+
+export const getRequestErrorMessage = (error, fallback = '请求失败，请稍后重试。') =>
+  error?.errorMsg || error?.message || fallback;
 
 export const getFileUrl = (filePath) => {
   if (!filePath) return '';
@@ -91,26 +94,40 @@ export const uploadAvatarAPI = (formData) =>
   });
 
 export const getMerchantHotelProfileAPI = () => request.get('/merchant/hotel-profile');
-export const updateMerchantHotelProfileAPI = (data) => request.put('/merchant/hotel-profile', data);
-export const submitMerchantHotelProfileReviewAPI = (data) => request.post('/merchant/hotel-profile/submit-review', data);
+export const updateMerchantHotelProfileAPI = (data) =>
+  request.put('/merchant/hotel-profile', data, data instanceof FormData ? {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  } : undefined);
+export const submitMerchantHotelProfileReviewAPI = (data) =>
+  request.post('/merchant/hotel-profile/submit-review', data, data instanceof FormData ? {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  } : undefined);
 export const getMerchantHotelImagesAPI = () => request.get('/merchant/hotel-images');
-export const uploadMerchantHotelImageAPI = (formData, onUploadProgress) =>
-  request.post('/merchant/hotel-images/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    onUploadProgress,
-  });
-export const deleteMerchantHotelImageAPI = (id) => request.delete(`/merchant/hotel-images/${id}`);
-export const sortMerchantHotelImagesAPI = (data) => request.put('/merchant/hotel-images/sort', data);
 export const getMerchantHotelCertificatesAPI = () => request.get('/merchant/hotel-certificates');
-export const uploadMerchantHotelCertificateAPI = (formData, onUploadProgress) =>
-  request.post('/merchant/hotel-certificates/upload', formData, {
+export const getMerchantRoomTypesAPI = (params) => request.get('/merchant/room-types', { params });
+export const getMerchantRoomTypeSuggestionsAPI = (params) => request.get('/merchant/room-types/suggestions', { params });
+export const getMerchantRoomTypeDetailAPI = (id) => request.get(`/merchant/room-types/${id}`);
+export const createMerchantRoomTypeAPI = (formData) =>
+  request.post('/merchant/room-types', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
-    onUploadProgress,
   });
-export const deleteMerchantHotelCertificateAPI = (id) => request.delete(`/merchant/hotel-certificates/${id}`);
+export const updateMerchantRoomTypeAPI = (id, formData) =>
+  request.put(`/merchant/room-types/${id}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+export const updateMerchantRoomTypeSaleStatusAPI = (id, data) => request.patch(`/merchant/room-types/${id}/on-sale`, data);
+export const batchUpdateMerchantRoomTypeSaleStatusAPI = (data) => request.patch('/merchant/room-types/on-sale/batch', data);
+export const deleteMerchantRoomTypeAPI = (id) => request.delete(`/merchant/room-types/${id}`);
+export const getAdminRoomTypesAPI = (params) => request.get('/admin/room-types', { params });
+export const getAdminRoomTypeDetailAPI = (id) => request.get(`/admin/room-types/${id}`);
+export const auditAdminRoomTypeAPI = (id, data) => request.patch(`/admin/room-types/${id}/audit`, data);
 
 export default request;

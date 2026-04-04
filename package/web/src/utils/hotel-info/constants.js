@@ -109,6 +109,7 @@ export const facilityOptionValueMap = facilityCategoryList.reduce((acc, category
 
 export const MAX_CUSTOM_FACILITY_COUNT = 20;
 export const MAX_CUSTOM_FACILITY_LENGTH = 30;
+export const MAX_INTRODUCTION_LENGTH = 200;
 
 export const createEmptyFacilitySelections = () => ({
   infrastructure: [],
@@ -222,6 +223,39 @@ export const certificateLeafGroups = [
   { key: 'other_qualification', title: '其他资质证明', maxCount: 3 },
 ];
 
+export const hotelImageGroupKeys = hotelImageGroups.map((group) => group.key);
+export const hotelImageGroupLimits = hotelImageGroups.reduce((acc, group) => {
+  acc[group.key] = Number(group.maxCount) || 0;
+  return acc;
+}, {});
+export const hotelImageGroupLabels = hotelImageGroups.reduce((acc, group) => {
+  acc[group.key] = group.title || group.key;
+  return acc;
+}, {});
+export const reviewRequiredImageGroupKeys = [...hotelImageGroupKeys];
+
+export const certificateGroupKeys = certificateLeafGroups.map((group) => group.key);
+export const certificateGroupLimits = certificateLeafGroups.reduce((acc, group) => {
+  acc[group.key] = Number(group.maxCount) || 0;
+  return acc;
+}, {});
+export const certificateGroupLabels = certificateLeafGroups.reduce((acc, group) => {
+  acc[group.key] = group.title || group.key;
+  return acc;
+}, {});
+export const reviewRequiredCertificateGroupKeys = [
+  'business_license',
+  'legal_person_front',
+  'legal_person_back',
+  'special_permit',
+];
+
+export const findMissingRequiredMediaGroups = (groupedItems, requiredGroupKeys = []) =>
+  requiredGroupKeys.filter((groupKey) => {
+    const list = Array.isArray(groupedItems?.[groupKey]) ? groupedItems[groupKey] : [];
+    return list.length < 1;
+  });
+
 export const createEmptyHotelImages = () => ({
   signboard: [],
   frontdesk: [],
@@ -237,30 +271,10 @@ export const createEmptyHotelCertificates = () => ({
   other_qualification: [],
 });
 
-export const createEmptyImageGroupFlags = (defaultValue = false) =>
-  hotelImageGroups.reduce((acc, group) => {
-    acc[group.key] = defaultValue;
-    return acc;
-  }, {});
-
-export const createEmptyCertificateGroupFlags = (defaultValue = false) =>
-  certificateLeafGroups.reduce((acc, group) => {
-    acc[group.key] = defaultValue;
-    return acc;
-  }, {});
-
-export const removeKey = (target, key) => {
-  if (!target || !(key in target)) return target;
-  const next = { ...target };
-  delete next[key];
-  return next;
-};
-
 const mapFileItem = (item, defaultKey) => ({
   id: item?.id,
   group: item?.group || defaultKey,
   filePath: item?.filePath || '',
-  sortOrder: Number(item?.sortOrder) || 0,
   sizeBytes: Number(item?.sizeBytes) || 0,
   mimeType: item?.mimeType || '',
   createdAt: item?.createdAt || '',
@@ -329,8 +343,6 @@ export const ensureArray = (value) => (Array.isArray(value) ? value : []);
 // 判断一个值是否为普通对象，便于做表单和接口数据的结构校验。
 export const isPlainObject = (value) =>
   value !== null && typeof value === 'object' && !Array.isArray(value);
-
-// 构造地图相关错误对象，统一错误出口和提示文案。
 
 // ---- profile normalize ----
 

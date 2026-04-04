@@ -2,64 +2,85 @@ import React from 'react';
 import {
   Alert,
   Form,
-  Spin,
   Tag,
 } from 'antd';
-import { getFileUrl } from '../../../utils/request';
+import {
+  getFileUrl,
+  getRequestErrorMessage,
+  getMerchantHotelCertificatesAPI,
+  getMerchantHotelImagesAPI,
+} from '../../../utils/request';
 import {
   accommodationTypeOptions,
+  certificateLeafGroups,
   certificateGroups,
   countryOptions,
+  createEmptyHotelCertificates,
+  createEmptyHotelImages,
   emptyHotelProfile,
   facilityCategoryList,
   hotelImageGroups,
   hotelInfoTabs,
   MAX_CUSTOM_FACILITY_LENGTH,
+  MAX_INTRODUCTION_LENGTH,
   starLevelOptions,
 } from '../../../utils/hotel-info';
+import { toUploadFileItem, useGroupedMediaDraft } from '../../../utils/common';
 import { validateEmail, validatePhone } from '../../../utils/validateRules';
-import useHotelCertificatesManager from './hooks/useHotelCertificatesManager';
-import useHotelImagesManager from './hooks/useHotelImagesManager';
 import useHotelInfoMap from './hooks/useHotelInfoMap';
 import useHotelInfoProfile from './hooks/useHotelInfoProfile';
 import FormActions from './modules/FormActions';
 import HotelInfoTabs from './HotelInfoTabs';
 import './index.scss';
 
-const getErrorMessage = (error, fallback) => error?.errorMsg || error?.message || fallback;
-
 export default function HotelInfoCore() {
   const [form] = Form.useForm();
+  const resolveImageUrl = getFileUrl;
 
   const {
-    hotelImages,
-    imageLoadError,
-    beforeHotelImageUpload,
-    uploadHotelImage,
-    handleDeleteHotelImage,
-    loadHotelImages,
-    handleRetryLoadImages,
-    resetHotelImagesState,
-  } = useHotelImagesManager({ getErrorMessage });
+    groupedItems: hotelImages,
+    loadError: imageLoadError,
+    beforeUpload: beforeHotelImageUpload,
+    removeItem: removeHotelImage,
+    loadItems: loadHotelImages,
+    handleRetryLoad: handleRetryLoadImages,
+    resetState: resetHotelImagesState,
+  } = useGroupedMediaDraft({
+    groups: hotelImageGroups,
+    createEmptyState: createEmptyHotelImages,
+    loadApi: getMerchantHotelImagesAPI,
+    resolveImageUrl,
+    fallbackName: 'image.png',
+    loadErrorMessage: '获取酒店图片失败，请稍后重试',
+    loadErrorMessageKey: 'merchant-hotel-image-load-error',
+  });
   const {
-    hotelCertificates,
-    certificateLoadError,
-    beforeCertificateUpload,
-    uploadHotelCertificate,
-    handleDeleteHotelCertificate,
-    loadHotelCertificates,
-    handleRetryLoadCertificates,
-    resetHotelCertificatesState,
-  } = useHotelCertificatesManager({ getErrorMessage });
+    groupedItems: hotelCertificates,
+    loadError: certificateLoadError,
+    beforeUpload: beforeCertificateUpload,
+    removeItem: removeHotelCertificate,
+    loadItems: loadHotelCertificates,
+    handleRetryLoad: handleRetryLoadCertificates,
+    resetState: resetHotelCertificatesState,
+  } = useGroupedMediaDraft({
+    groups: certificateLeafGroups,
+    createEmptyState: createEmptyHotelCertificates,
+    loadApi: getMerchantHotelCertificatesAPI,
+    resolveImageUrl,
+    fallbackName: 'certificate.png',
+    loadErrorMessage: '获取资质证件失败，请稍后重试',
+    loadErrorMessageKey: 'merchant-hotel-certificate-load-error',
+  });
 
   const { profileState, profileActions } = useHotelInfoProfile({
     form,
+    hotelImages,
     hotelCertificates,
     loadHotelImages,
     loadHotelCertificates,
     resetHotelImagesState,
     resetHotelCertificatesState,
-    getErrorMessage,
+    getErrorMessage: getRequestErrorMessage,
   });
 
   const { mapState, mapRefs, mapValues, mapActions } = useHotelInfoMap({
@@ -67,7 +88,7 @@ export default function HotelInfoCore() {
     activeTab: profileState.activeTab,
     isReviewing: profileState.isReviewing,
     loading: profileState.loading,
-    getErrorMessage,
+    getErrorMessage: getRequestErrorMessage,
   });
 
   const isOpen24Hours = Form.useWatch(['operationRules', 'isOpen24Hours'], form);
@@ -99,7 +120,7 @@ export default function HotelInfoCore() {
       nextDisabled={profileState.saving || profileState.submitting}
       showSubmit={profileState.isCertificatesTab}
       saveDisabled={profileState.isReviewing || profileState.submitting}
-      submitDisabled={!profileState.canSubmitReview || profileState.saving}
+      submitDisabled={!profileState.canSubmitReview}
     />
   );
 
@@ -138,9 +159,9 @@ export default function HotelInfoCore() {
     mapActionDisabled: profileState.isReviewing || Boolean(mapState.mapUnavailableReason),
     validatePhone,
     validateEmail,
+    MAX_INTRODUCTION_LENGTH,
     isOpen24Hours,
     handleOpen24HoursChange,
-    actionsNode: formActionsNode,
     readOnly: profileState.isReviewing,
   };
 
@@ -149,11 +170,9 @@ export default function HotelInfoCore() {
     imageLoadError,
     onRetryLoadImages: handleRetryLoadImages,
     hotelImages,
-    onDeleteImage: handleDeleteHotelImage,
-    uploadHotelImage,
+    onDeleteImage: removeHotelImage,
     beforeHotelImageUpload,
-    actionsNode: formActionsNode,
-    resolveImageUrl: getFileUrl,
+    toUploadFileItem,
     readOnly: profileState.isReviewing,
   };
 
@@ -165,7 +184,6 @@ export default function HotelInfoCore() {
     handleAddCustomFacility: profileActions.handleAddCustomFacility,
     customFacilities: profileState.customFacilities,
     handleRemoveCustomFacility: profileActions.handleRemoveCustomFacility,
-    actionsNode: formActionsNode,
     readOnly: profileState.isReviewing,
   };
 
@@ -174,17 +192,11 @@ export default function HotelInfoCore() {
     certificateLoadError,
     onRetryLoadCertificates: handleRetryLoadCertificates,
     hotelCertificates,
-    onDeleteCertificate: handleDeleteHotelCertificate,
-    uploadHotelCertificate,
+    onDeleteCertificate: removeHotelCertificate,
     beforeCertificateUpload,
-    actionsNode: formActionsNode,
-    resolveImageUrl: getFileUrl,
+    toUploadFileItem,
     readOnly: profileState.isReviewing,
   };
-
-  if (profileState.loading) {
-    return <div className="hotel-info__loading"><Spin description="正在加载酒店资料..." /></div>;
-  }
 
   return (
     <div className="page-container hotel-info">
@@ -196,7 +208,13 @@ export default function HotelInfoCore() {
         <Tag color={profileState.reviewStatusMeta.color} className="hotel-info__status-tag">{profileState.reviewStatusMeta.text}</Tag>
       </div>
 
-      <Form form={form} layout="vertical" initialValues={emptyHotelProfile} className="hotel-info__form" disabled={profileState.isReviewing}>
+      <Form
+        form={form}
+        layout="vertical"
+        initialValues={emptyHotelProfile}
+        className="hotel-info__form"
+        disabled={profileState.isReviewing || profileState.initializing}
+      >
         <HotelInfoTabs
           activeTab={profileState.activeTab}
           setActiveTab={profileActions.setActiveTab}
@@ -206,6 +224,7 @@ export default function HotelInfoCore() {
           facilitiesProps={facilitiesProps}
           certificatesProps={certificatesProps}
         />
+        {formActionsNode}
       </Form>
     </div>
   );

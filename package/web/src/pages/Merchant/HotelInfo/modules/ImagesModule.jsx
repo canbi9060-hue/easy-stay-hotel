@@ -1,19 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { PlusOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Divider, Image, Upload } from 'antd';
-import {
-  createUploadRequestHandler,
-  getBase64,
-  normalizeUploadFileList,
-  resolveUploadItemId,
-  toUploadFileItem,
-} from '../../../../utils/hotel-info/uploadUtils';
 
-const mapGroupFileList = (hotelImages, hotelImageGroups, resolveImageUrl) =>
-  hotelImageGroups.reduce((acc, groupMeta) => {
-    acc[groupMeta.key] = (hotelImages[groupMeta.key] || []).map((item) => toUploadFileItem(item, resolveImageUrl, 'image.png'));
-    return acc;
-  }, {});
+const getBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.readAsDataURL(file);
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = (error) => reject(error);
+});
 
 export default function ImagesModule({
   hotelImageGroups,
@@ -21,32 +15,24 @@ export default function ImagesModule({
   onRetryLoadImages,
   hotelImages,
   onDeleteImage,
-  uploadHotelImage,
   beforeHotelImageUpload,
-  actionsNode,
-  resolveImageUrl,
+  toUploadFileItem,
   readOnly = false,
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
-  const [fileListByGroup, setFileListByGroup] = useState({});
-
-  useEffect(() => {
-    setFileListByGroup(mapGroupFileList(hotelImages, hotelImageGroups, resolveImageUrl));
-  }, [hotelImageGroups, hotelImages, resolveImageUrl]);
-
-  const handleFileListChange = (groupKey, nextFileList) => {
-    setFileListByGroup((prev) => ({
-      ...prev,
-      [groupKey]: normalizeUploadFileList(nextFileList),
-    }));
-  };
+  const fileListByGroup = useMemo(() =>
+    hotelImageGroups.reduce((acc, groupMeta) => {
+      acc[groupMeta.key] = hotelImages[groupMeta.key].map((item) => toUploadFileItem(item, 'image.png'));
+      return acc;
+    }, {}), [hotelImageGroups, hotelImages, toUploadFileItem]);
 
   const handlePreview = async (file) => {
-    if (!file.url && !file.preview && file.originFileObj) {
+    if (!file.url && !file.thumbUrl && !file.preview && file.originFileObj) {
       file.preview = await getBase64(file.originFileObj);
     }
-    setPreviewImage(file.url || file.preview || '');
+
+    setPreviewImage(file.url || file.thumbUrl || file.preview || '');
     setPreviewOpen(true);
   };
 
@@ -75,13 +61,7 @@ export default function ImagesModule({
         ) : null}
 
         {hotelImageGroups.map((groupMeta, groupIndex) => {
-          const groupFileList = fileListByGroup[groupMeta.key] || [];
-
-          const handleUploadRequest = createUploadRequestHandler(
-            uploadHotelImage,
-            groupMeta.key,
-            '上传响应缺少图片 ID'
-          );
+          const groupFileList = fileListByGroup[groupMeta.key];
 
           return (
             <div className="hotel-info__image-group" key={groupMeta.key}>
@@ -93,23 +73,15 @@ export default function ImagesModule({
               <Upload
                 listType="picture-card"
                 fileList={groupFileList}
-                beforeUpload={beforeHotelImageUpload}
-                customRequest={handleUploadRequest}
+                beforeUpload={(file) => beforeHotelImageUpload(groupMeta.key, file)}
                 accept=".jpg,.jpeg,.png"
                 disabled={readOnly}
                 maxCount={groupMeta.maxCount}
-                onChange={({ fileList }) => handleFileListChange(groupMeta.key, fileList)}
                 onPreview={handlePreview}
-                onRemove={async (file) => {
+                onRemove={(file) => {
                   if (readOnly) return false;
-                  const imageId = resolveUploadItemId(file);
-                  if (!imageId) return false;
-                  try {
-                    await onDeleteImage(groupMeta.key, imageId);
-                    return true;
-                  } catch {
-                    return false;
-                  }
+                  onDeleteImage(groupMeta.key, String(file.uid));
+                  return false;
                 }}
               >
                 {groupFileList.length >= groupMeta.maxCount || readOnly ? null : uploadButton}
@@ -120,16 +92,14 @@ export default function ImagesModule({
           );
         })}
       </Card>
-      {actionsNode}
-
       {previewImage ? (
         <Image
-          style={{ display: 'none' }}
+          styles={{ root: { display: 'none' } }}
           preview={{
             open: previewOpen,
-            onOpenChange: setPreviewOpen,
-            afterOpenChange: (open) => {
-              if (!open) setPreviewImage('');
+            onOpenChange: (visible) => setPreviewOpen(visible),
+            afterOpenChange: (visible) => {
+              if (!visible) setPreviewImage('');
             },
           }}
           src={previewImage}

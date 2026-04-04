@@ -1,4 +1,4 @@
-import { Form, message } from 'antd';
+import { Form, message, Modal } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   amapJsKey,
@@ -6,13 +6,11 @@ import {
   destroyMapInstance,
   emptyHotelProfile,
   fetchDistrictOptions,
-  formatAddressText,
-  geocodeAddress,
-  getDistrictCenterByKeyword,
   loadAmapScript,
-  locateByIP,
+  locateByAddressInput,
+  prefillAddressByIP,
   renderMapInstance,
-  reverseGeocodeCoordinates,
+  resolveAddressFromPoint,
 } from '../../../../utils/hotel-info';
 
 const addressDraftStorageKey = 'merchant_hotel_address_draft';
@@ -57,6 +55,29 @@ const getOptionCoordinates = (options, value) => {
   }
   return { latitude, longitude };
 };
+
+const createRestoreAddressDraftPrompt = (draft) => new Promise((resolve) => {
+  let settled = false;
+  const finish = (value) => {
+    if (settled) return;
+    settled = true;
+    resolve(value);
+  };
+
+  const savedAtText = draft?.savedAt
+    ? new Date(draft.savedAt).toLocaleString()
+    : '';
+  Modal.confirm({
+    title: '发现定位草稿',
+    content: savedAtText
+      ? `检测到 ${savedAtText} 暂存的定位草稿，是否恢复？`
+      : '检测到未提交的定位草稿，是否恢复？',
+    okText: '恢复草稿',
+    cancelText: '丢弃草稿',
+    onOk: () => finish(true),
+    onCancel: () => finish(false),
+  });
+});
 
 export default function useHotelInfoMap({
   form,
@@ -211,6 +232,12 @@ export default function useHotelInfoMap({
         return;
       }
 
+      const shouldRestore = await createRestoreAddressDraftPrompt(parsedDraft);
+      if (!shouldRestore) {
+        window.sessionStorage.removeItem(addressDraftStorageKey);
+        return;
+      }
+
       const mergedAddress = {
         ...currentAddress,
         country: draftAddress.country || currentAddress.country || emptyHotelProfile.address.country,
@@ -225,6 +252,7 @@ export default function useHotelInfoMap({
 
       form.setFieldsValue({ address: mergedAddress });
       syncRegionOptionsFromAddress(mergedAddress);
+      message.success('已恢复定位草稿。');
     } catch (error) {
       // ignore invalid local draft data
     }
@@ -239,24 +267,17 @@ export default function useHotelInfoMap({
     if (!mapReady) return null;
 
     const targetAddress = address || form.getFieldValue(['address']) || emptyHotelProfile.address;
-    const detailText = typeof targetAddress?.detail === 'string' ? targetAddress.detail.trim() : '';
-    const regionKeyword = targetAddress?.district || targetAddress?.city || targetAddress?.province || '';
-
-    if (!detailText && !regionKeyword) return null;
+    if (!hasAddressTextInput(targetAddress)) return null;
 
     const requestId = ++locateRequestIdRef.current;
     setAddressLocateError('');
     setMapStatusText('正在定位...');
 
     try {
-      const located = detailText
-        ? await geocodeAddress(amapWebKey, formatAddressText({ ...targetAddress, detail: detailText }), {
-          city: targetAddress?.city || targetAddress?.province || '',
-        })
-        : await getDistrictCenterByKeyword(amapWebKey, regionKeyword);
+      const located = await locateByAddressInput(targetAddress, amapWebKey);
 
       if (requestId !== locateRequestIdRef.current) return null;
-      if (!located) throw new Error(detailText ? '详细地址定位失败。' : '所选区域定位失败。');
+      if (!located) throw new Error('根据当前地址定位失败。');
 
       const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
       const nextCoordinates = { latitude: located.latitude, longitude: located.longitude };
@@ -292,7 +313,7 @@ export default function useHotelInfoMap({
     });
 
     try {
-      const nextAddressInfo = await reverseGeocodeCoordinates(amapWebKey, coordinates);
+      const nextAddressInfo = await resolveAddressFromPoint(coordinates, amapWebKey);
       if (requestId !== pointPickRequestIdRef.current) return;
       if (!nextAddressInfo) {
         throw new Error('未能解析当前选点地址。');
@@ -370,66 +391,34 @@ export default function useHotelInfoMap({
     if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current || isReviewing) return;
     ipLocateTriedRef.current = true;
 
-    locateByIP(amapWebKey)
-      .then(async (location) => {
-        if (!location) return;
+    prefillAddressByIP(form.getFieldValue(['address']) || emptyHotelProfile.address, amapWebKey)
+      .then((prefill) => {
+        if (!prefill) return;
         const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
         const hasTextInput = hasAddressTextInput(latestAddress);
         if (hasTextInput || hasManualSelectionRef.current) {
           return;
         }
 
-        const latitude = Number(location?.latitude);
-        const longitude = Number(location?.longitude);
-        const hasValidCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+        const ipCoordinates = prefill.coordinates;
+        const hasValidCoordinates = Number.isFinite(ipCoordinates?.latitude) && Number.isFinite(ipCoordinates?.longitude);
         if (!hasValidCoordinates) {
           setInitialCoordinates(null);
           return;
         }
 
-        const ipCoordinates = { latitude: location.latitude, longitude: location.longitude };
         setMapStatusText('正在根据 IP 定位...');
         setInitialCoordinates(ipCoordinates);
 
-        const addressPatch = {};
-        if (!latestAddress.country) {
-          addressPatch.country = emptyHotelProfile.address.country;
-        }
-        if (!latestAddress.province && location?.province) {
-          addressPatch.province = location.province;
-        }
-        if (!latestAddress.city && location?.city) {
-          addressPatch.city = location.city;
-        }
-
-        try {
-          const reverseAddress = await reverseGeocodeCoordinates(amapWebKey, ipCoordinates);
-
-          if (!latestAddress.province && !addressPatch.province && reverseAddress?.province) {
-            addressPatch.province = reverseAddress.province;
-          }
-          if (!latestAddress.city && !addressPatch.city && reverseAddress?.city) {
-            addressPatch.city = reverseAddress.city;
-          }
-          if (!latestAddress.district && reverseAddress?.district) {
-            addressPatch.district = reverseAddress.district;
-          }
-          if (!latestAddress.detail && reverseAddress?.detail) {
-            addressPatch.detail = reverseAddress.detail;
-          }
-        } catch (error) {
-          // ignore ip reverse geocode error
-        }
-
         const nextAddress = {
           ...latestAddress,
-          ...addressPatch,
+          ...prefill.addressPatch,
           latitude: ipCoordinates.latitude,
           longitude: ipCoordinates.longitude,
         };
 
         form.setFieldsValue({ address: nextAddress });
-        if (Object.keys(addressPatch).length) {
+        if (Object.keys(prefill.addressPatch).length) {
           syncRegionOptionsFromAddress(nextAddress);
         }
       })

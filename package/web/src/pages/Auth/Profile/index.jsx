@@ -11,7 +11,7 @@ import {
 
 import defaultAvatar from '../../../assets/images/default-avatar.svg';
 import { fetchUserInfo, setUserInfo } from '../../../store/slices/userSlice';
-import { getFileUrl, updateProfileAPI, uploadAvatarAPI } from '../../../utils/request';
+import { getFileUrl, getRequestErrorMessage, updateProfileAPI, uploadAvatarAPI } from '../../../utils/request';
 import {
   validateEmail,
   validatePhone,
@@ -29,8 +29,6 @@ const statusLabelMap = {
   0: '已禁用',
   1: '正常',
 };
-
-const getErrorMessage = (error, fallback) => error?.errorMsg || error?.message || fallback;
 
 const formatDisplayValue = (value, fallback = '-') => {
   if (value === null || value === undefined) {
@@ -79,11 +77,11 @@ export default function Profile() {
     try {
       setSaving(true);
       const res = await updateProfileAPI(values);
-      dispatch(setUserInfo(res?.data || {}));
+      dispatch(setUserInfo(res.data));
       message.success('资料更新成功。');
     } catch (error) {
       const field = error?.field;
-      const errorMsg = getErrorMessage(error, '更新资料失败。');
+      const errorMsg = getRequestErrorMessage(error, '更新资料失败。');
 
       if (field) {
         form.setFields([{ name: field, errors: [errorMsg] }]);
@@ -116,11 +114,11 @@ export default function Profile() {
     try {
       setAvatarUploading(true);
       const res = await uploadAvatarAPI(formData);
-      dispatch(setUserInfo(res?.data || {}));
+      dispatch(setUserInfo(res.data));
       message.success('头像更新成功。');
-      onSuccess?.(res?.data, file);
+      onSuccess?.(res.data, file);
     } catch (error) {
-      message.error(getErrorMessage(error, '头像上传失败。'));
+      message.error(getRequestErrorMessage(error, '头像上传失败。'));
       onError?.(error);
     } finally {
       setAvatarUploading(false);

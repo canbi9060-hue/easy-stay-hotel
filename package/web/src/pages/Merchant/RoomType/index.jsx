@@ -1,10 +1,3 @@
-import React from 'react';
-import './index.scss';
+import RoomTypeCore from './RoomTypeCore';
 
-export default function RoomType() {
-    return (
-        <div className="page-container">
-            <div>房型管理</div>
-        </div>
-    );
-}
+export default RoomTypeCore;

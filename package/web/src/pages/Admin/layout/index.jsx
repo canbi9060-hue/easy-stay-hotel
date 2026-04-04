@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { DashboardOutlined } from '@ant-design/icons';
+import { AuditOutlined, DashboardOutlined } from '@ant-design/icons';
 
 import Header from '../../../components/Header';
 
@@ -17,6 +17,12 @@ export default function AdminLayout() {
       icon: <DashboardOutlined />,
       label: '仪表盘',
       onClick: () => navigate('/admin/dashboard'),
+    },
+    {
+      key: '/admin/room-type-review',
+      icon: <AuditOutlined />,
+      label: '房型审核',
+      onClick: () => navigate('/admin/room-type-review'),
     },
   ];
 

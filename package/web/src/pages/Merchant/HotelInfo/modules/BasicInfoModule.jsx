@@ -44,9 +44,9 @@ export default function BasicInfoModule({
   mapActionDisabled = false,
   validatePhone,
   validateEmail,
+  MAX_INTRODUCTION_LENGTH,
   isOpen24Hours,
   handleOpen24HoursChange,
-  actionsNode,
   readOnly = false,
 }) {
   return (
@@ -72,6 +72,20 @@ export default function BasicInfoModule({
               <Col xs={24}>
                 <Form.Item className="hotel-info__label-strong hotel-info__label-no-required-mark" label="酒店名称" name="hotelName" rules={[{ required: true, message: '请输入酒店名称。' }]}>
                   <Input maxLength={100} placeholder="请输入酒店名称" />
+                </Form.Item>
+              </Col>
+              <Col xs={24}>
+                <Form.Item
+                  className="hotel-info__label-strong hotel-info__label-no-required-mark"
+                  label="酒店简介（选填）"
+                  name="introduction"
+                >
+                  <Input.TextArea
+                    maxLength={MAX_INTRODUCTION_LENGTH}
+                    showCount
+                    autoSize={{ minRows: 4, maxRows: 6 }}
+                    placeholder="请输入酒店简介，如酒店特色、周边信息或服务亮点"
+                  />
                 </Form.Item>
               </Col>
 
@@ -158,8 +172,6 @@ export default function BasicInfoModule({
           </div>
         </Col>
       </Row>
-
-      {actionsNode}
 
       <Modal
         open={mapModalOpen}

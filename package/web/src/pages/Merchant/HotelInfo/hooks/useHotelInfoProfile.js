@@ -6,20 +6,26 @@ import {
   updateMerchantHotelProfileAPI,
 } from '../../../../utils/request';
 import {
+  buildHotelMediaSubmitPayload,
+  certificateGroupLabels,
   emptyHotelProfile,
+  findMissingRequiredMediaGroups,
   hotelInfoTabs,
+  hotelImageGroupLabels,
   MAX_CUSTOM_FACILITY_COUNT,
   MAX_CUSTOM_FACILITY_LENGTH,
   normalizeHotelProfile,
+  reviewRequiredCertificateGroupKeys,
+  reviewRequiredImageGroupKeys,
   reviewStatusMap,
 } from '../../../../utils/hotel-info';
 
 const addressDraftStorageKey = 'merchant_hotel_address_draft';
 const hotelInfoLoadMessageKey = 'merchant-hotel-info-load-error';
-const reviewRequiredCertificateGroupKeys = ['business_license', 'legal_person_front', 'legal_person_back', 'special_permit'];
 
 export default function useHotelInfoProfile({
   form,
+  hotelImages,
   hotelCertificates,
   loadHotelImages,
   loadHotelCertificates,
@@ -27,7 +33,7 @@ export default function useHotelInfoProfile({
   resetHotelCertificatesState,
   getErrorMessage,
 }) {
-  const [loading, setLoading] = useState(true);
+  const [initializing, setInitializing] = useState(true);
   const [saving, setSaving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState(hotelInfoTabs[0].key);
@@ -38,8 +44,16 @@ export default function useHotelInfoProfile({
   const reviewStatusMeta = reviewStatusMap[reviewStatus] || reviewStatusMap.incomplete;
   const isReviewing = reviewStatus === 'reviewing';
   const isCertificatesTab = activeTab === 'certificates';
-  const hasRequiredCertificates = reviewRequiredCertificateGroupKeys.every((groupKey) => (hotelCertificates[groupKey] || []).length > 0);
-  const canSubmitReview = !isReviewing && hasRequiredCertificates;
+  const submitValidation = useMemo(() => {
+    const missingImageGroups = findMissingRequiredMediaGroups(hotelImages, reviewRequiredImageGroupKeys);
+    const missingCertificateGroups = findMissingRequiredMediaGroups(hotelCertificates, reviewRequiredCertificateGroupKeys);
+    return {
+      missingImageGroups,
+      missingCertificateGroups,
+      ready: missingImageGroups.length === 0 && missingCertificateGroups.length === 0,
+    };
+  }, [hotelCertificates, hotelImages]);
+  const canSubmitReview = !isReviewing && submitValidation.ready;
 
   const tabOrder = useMemo(() => hotelInfoTabs.map((item) => item.key), []);
   const activeTabIndex = tabOrder.indexOf(activeTab);
@@ -49,22 +63,26 @@ export default function useHotelInfoProfile({
   const normalizeAndApplyProfile = useCallback((profileData) => {
     const profile = normalizeHotelProfile(profileData);
     form.setFieldsValue(profile);
-    setCustomFacilities(profile.customFacilities || []);
-    setReviewStatus(profile.reviewStatus || emptyHotelProfile.reviewStatus);
+    setCustomFacilities(profile.customFacilities);
+    setReviewStatus(profile.reviewStatus);
     return profile;
   }, [form]);
 
   useEffect(() => {
+    let active = true;
+
     (async () => {
       try {
-        setLoading(true);
+        setInitializing(true);
         const profileRes = await getMerchantHotelProfileAPI();
-        normalizeAndApplyProfile(profileRes?.data);
-        await loadHotelImages({ notify: false });
-        await loadHotelCertificates({ notify: false });
+        if (!active) return;
+        normalizeAndApplyProfile(profileRes.data);
+        loadHotelImages({ notify: false });
+        loadHotelCertificates({ notify: false });
       } catch (error) {
+        if (!active) return;
         form.setFieldsValue(emptyHotelProfile);
-        setCustomFacilities(emptyHotelProfile.customFacilities || []);
+        setCustomFacilities(emptyHotelProfile.customFacilities);
         setReviewStatus(emptyHotelProfile.reviewStatus);
         resetHotelImagesState();
         resetHotelCertificatesState();
@@ -74,9 +92,15 @@ export default function useHotelInfoProfile({
           content: getErrorMessage(error, '加载酒店资料失败，请稍后重试。'),
         });
       } finally {
-        setLoading(false);
+        if (active) {
+          setInitializing(false);
+        }
       }
     })();
+
+    return () => {
+      active = false;
+    };
   }, [
     form,
     getErrorMessage,
@@ -111,17 +135,54 @@ export default function useHotelInfoProfile({
     setCustomFacilities((prev) => prev.filter((item) => item !== facilityName));
   }, []);
 
-  const saveAllProfile = useCallback(async () => {
+  const buildProfileSubmitFormData = useCallback(() => {
     const formValues = form.getFieldsValue(true);
-    const values = normalizeHotelProfile({
+    const payload = normalizeHotelProfile({
       ...formValues,
       customFacilities,
     });
-    const saved = await updateMerchantHotelProfileAPI(values);
-    normalizeAndApplyProfile(saved?.data);
+    const mediaPayload = buildHotelMediaSubmitPayload({
+      hotelImages,
+      hotelCertificates,
+    });
+    const formData = new FormData();
+    formData.append('payload', JSON.stringify({
+      ...payload,
+      hotelImagePlan: mediaPayload.hotelImagePlan,
+      hotelCertificatePlan: mediaPayload.hotelCertificatePlan,
+    }));
+    mediaPayload.hotelImageFiles.forEach((file) => {
+      formData.append('hotelImageFiles', file);
+    });
+    mediaPayload.hotelCertificateFiles.forEach((file) => {
+      formData.append('hotelCertificateFiles', file);
+    });
+
+    return formData;
+  }, [
+    customFacilities,
+    form,
+    hotelCertificates,
+    hotelImages,
+  ]);
+
+  const refreshProfileMediaState = useCallback(async () => {
+    await loadHotelImages({ notify: false });
+    await loadHotelCertificates({ notify: false });
     window.sessionStorage.removeItem(addressDraftStorageKey);
-    return values;
-  }, [customFacilities, form, normalizeAndApplyProfile]);
+  }, [loadHotelCertificates, loadHotelImages]);
+
+  const saveAllProfile = useCallback(async () => {
+    const formData = buildProfileSubmitFormData();
+    const saved = await updateMerchantHotelProfileAPI(formData);
+    normalizeAndApplyProfile(saved.data);
+    await refreshProfileMediaState();
+    return saved.data;
+  }, [
+    buildProfileSubmitFormData,
+    normalizeAndApplyProfile,
+    refreshProfileMediaState,
+  ]);
 
   const goToTabByIndex = useCallback((targetIndex) => {
     if (targetIndex < 0 || targetIndex >= tabOrder.length) return;
@@ -151,30 +212,58 @@ export default function useHotelInfoProfile({
     }
   }, [getErrorMessage, isReviewing, saveAllProfile]);
 
+  const handleSubmitValidationFailed = useCallback(() => {
+    const [missingImageGroup] = submitValidation.missingImageGroups;
+    if (missingImageGroup) {
+      setActiveTab('images');
+      const groupLabel = hotelImageGroupLabels[missingImageGroup] || '酒店图片';
+      message.warning(`${groupLabel}至少上传 1 张后才能提交审核。`);
+      return true;
+    }
+
+    const [missingCertificateGroup] = submitValidation.missingCertificateGroups;
+    if (missingCertificateGroup) {
+      setActiveTab('certificates');
+      const groupLabel = certificateGroupLabels[missingCertificateGroup] || '资质证件';
+      message.warning(`${groupLabel}至少上传 1 张后才能提交审核。`);
+      return true;
+    }
+
+    return false;
+  }, [submitValidation]);
+
   const handleSubmitProfile = useCallback(async () => {
-    if (!canSubmitReview || isReviewing) return;
+    if (isReviewing) return;
+    if (!submitValidation.ready) {
+      handleSubmitValidationFailed();
+      return;
+    }
     try {
       setSubmitting(true);
-      let values;
-      try {
-        values = await saveAllProfile();
-      } catch (error) {
-        message.error(getErrorMessage(error, '保存酒店资料失败。'));
-        return;
-      }
-      const submitted = await submitMerchantHotelProfileReviewAPI(values);
-      normalizeAndApplyProfile(submitted?.data);
+      const formData = buildProfileSubmitFormData();
+      const submitted = await submitMerchantHotelProfileReviewAPI(formData);
+      normalizeAndApplyProfile(submitted.data);
+      await refreshProfileMediaState();
       message.success('酒店资料已提交审核。');
     } catch (error) {
       message.error(getErrorMessage(error, '提交酒店资料失败。'));
     } finally {
       setSubmitting(false);
     }
-  }, [canSubmitReview, getErrorMessage, isReviewing, normalizeAndApplyProfile, saveAllProfile]);
+  }, [
+    getErrorMessage,
+    handleSubmitValidationFailed,
+    isReviewing,
+    normalizeAndApplyProfile,
+    buildProfileSubmitFormData,
+    refreshProfileMediaState,
+    submitValidation.ready,
+  ]);
 
   return {
     profileState: {
-      loading,
+      loading: initializing,
+      initializing,
       saving,
       submitting,
       activeTab,
@@ -184,6 +273,7 @@ export default function useHotelInfoProfile({
       isReviewing,
       isCertificatesTab,
       canSubmitReview,
+      submitValidation,
       hasPrevTab,
       hasNextTab,
     },

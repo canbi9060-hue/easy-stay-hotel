@@ -1,32 +1,18 @@
 const { query } = require('../../../db/index');
-
-const runQuery = (executor, sql, values) => {
-  if (executor?.query) {
-    return executor.query(sql, values);
-  }
-  return query(sql, values);
-};
-
-const lockMerchantRow = async (executor, merchantUserId) => {
-  await runQuery(
-    executor,
-    `SELECT id FROM users WHERE id = ? FOR UPDATE`,
-    [merchantUserId]
-  );
-};
+const { runQuery, lockUserRow } = require('../../utils/repository');
 
 const getHotelImagesByMerchantId = async (merchantUserId, group = '', executor = null) => {
   const sql = group
-    ? `SELECT * FROM merchant_hotel_images WHERE merchant_user_id = ? AND image_group = ? ORDER BY sort_order ASC, id ASC`
-    : `SELECT * FROM merchant_hotel_images WHERE merchant_user_id = ? ORDER BY image_group ASC, sort_order ASC, id ASC`;
+    ? `SELECT * FROM merchant_hotel_images WHERE merchant_user_id = ? AND image_group = ? ORDER BY id ASC`
+    : `SELECT * FROM merchant_hotel_images WHERE merchant_user_id = ? ORDER BY image_group ASC, id ASC`;
   const values = group ? [merchantUserId, group] : [merchantUserId];
   return runQuery(executor, sql, values);
 };
 
 const getHotelCertificatesByMerchantId = async (merchantUserId, group = '', executor = null) => {
   const sql = group
-    ? `SELECT * FROM merchant_hotel_certificates WHERE merchant_user_id = ? AND cert_group = ? ORDER BY sort_order ASC, id ASC`
-    : `SELECT * FROM merchant_hotel_certificates WHERE merchant_user_id = ? ORDER BY cert_group ASC, sort_order ASC, id ASC`;
+    ? `SELECT * FROM merchant_hotel_certificates WHERE merchant_user_id = ? AND cert_group = ? ORDER BY id ASC`
+    : `SELECT * FROM merchant_hotel_certificates WHERE merchant_user_id = ? ORDER BY cert_group ASC, id ASC`;
   const values = group ? [merchantUserId, group] : [merchantUserId];
   return runQuery(executor, sql, values);
 };
@@ -53,7 +39,7 @@ const getMerchantReviewStatus = async (merchantUserId, executor = null) => {
 
 module.exports = {
   runQuery,
-  lockMerchantRow,
+  lockMerchantRow: lockUserRow,
   getHotelImagesByMerchantId,
   getHotelCertificatesByMerchantId,
   getHotelProfileByMerchantId,

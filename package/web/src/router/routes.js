@@ -19,6 +19,7 @@ const Housekeeping = lazy(() => import('../pages/Merchant/Housekeeping'));
 const RoomStatus = lazy(() => import('../pages/Merchant/RoomStatus'));
 const AdminLayout = lazy(() => import('../pages/Admin/layout'));
 const AdminDashboard = lazy(() => import('../pages/Admin/Dashboard'));
+const AdminRoomTypeReview = lazy(() => import('../pages/Admin/RoomTypeReview'));
 const Profile = lazy(() => import('../pages/Auth/Profile'));
 const NotFound = lazy(() => import('../pages/Auth/NotFound'));
 
@@ -78,6 +79,7 @@ export const routes = [
     children: [
       { path: '', element: <Navigate to="/admin/dashboard" replace /> },
       { path: 'dashboard', element: <AdminDashboard /> },
+      { path: 'room-type-review', element: <AdminRoomTypeReview /> },
       { path: 'profile', element: <Profile /> },
     ],
   },

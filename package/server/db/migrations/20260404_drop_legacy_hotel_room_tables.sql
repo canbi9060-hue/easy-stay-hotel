@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS `room_date_prices`;
+DROP TABLE IF EXISTS `room_date_stocks`;
+DROP TABLE IF EXISTS `room_tag_relations`;
+DROP TABLE IF EXISTS `hotel_banners`;
+DROP TABLE IF EXISTS `hotel_tag_relations`;
+DROP TABLE IF EXISTS `rooms`;
+DROP TABLE IF EXISTS `room_categories`;
+DROP TABLE IF EXISTS `tags`;
+DROP TABLE IF EXISTS `hotels`;

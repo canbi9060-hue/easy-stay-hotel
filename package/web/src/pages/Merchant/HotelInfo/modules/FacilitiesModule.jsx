@@ -8,6 +8,13 @@ import {
   Tag,
 } from 'antd';
 
+const facilityHintMap = {
+  infrastructure: '（选填）请勾选酒店实际提供的客房与基础硬件设施。',
+  entertainment: '（选填）请勾选住客可使用的娱乐休闲设施。',
+  service: '（选填）请勾选酒店当前可稳定提供的服务能力。',
+  specialty: '（选填）请勾选有明确配置的特色服务或特色空间。',
+};
+
 export default function FacilitiesModule({
   facilityCategoryList,
   customFacilityInput,
@@ -16,7 +23,6 @@ export default function FacilitiesModule({
   handleAddCustomFacility,
   customFacilities,
   handleRemoveCustomFacility,
-  actionsNode,
   readOnly = false,
 }) {
   const normalizedCustomFacilities = Array.isArray(customFacilities) ? customFacilities : [];
@@ -26,8 +32,9 @@ export default function FacilitiesModule({
       {facilityCategoryList.map((category) => (
         <Card className="hotel-info__section-card hotel-info__facility-card" key={category.key}>
           <div className="hotel-info__facility-header">
-            <h3 className="hotel-info__facility-title">{category.label}</h3>
+            <h3 className="hotel-info__facility-title">{category.label}（选填）</h3>
           </div>
+          <p className="hotel-info__facility-hint">{facilityHintMap[category.key] || '（选填）请按实际情况勾选。'}</p>
           <Form.Item name={['facilitySelections', category.key]} style={{ marginBottom: 0 }}>
             <Checkbox.Group className="hotel-info__facility-options" disabled={readOnly}>
               {category.options.map((option) => (
@@ -41,9 +48,9 @@ export default function FacilitiesModule({
       ))}
 
       <Card className="hotel-info__section-card hotel-info__facility-card hotel-info__facility-custom-card">
-        <h3 className="hotel-info__facility-title">自定义设施</h3>
+        <h3 className="hotel-info__facility-title">自定义设施（选填）</h3>
         <p className="hotel-info__facility-custom-desc">
-          如果以上选项不包含你的设施，请在此手动输入后添加。
+          （选填）如果以上选项不包含你的设施，请在此手动输入后添加。
         </p>
         <div className="hotel-info__facility-custom-editor">
           <Input
@@ -80,8 +87,6 @@ export default function FacilitiesModule({
           )}
         </div>
       </Card>
-
-      {actionsNode}
     </>
   );
 }

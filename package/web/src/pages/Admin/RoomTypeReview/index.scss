@@ -1,0 +1,85 @@
+.admin-room-review {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-room-review__header h1 {
+  margin: 0;
+  font-size: 28px;
+  color: #18263d;
+}
+
+.admin-room-review__header p {
+  margin: 8px 0 0;
+  color: #6f819a;
+}
+
+.admin-room-review__toolbar {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 18px;
+  border-radius: 18px;
+  background: #f7fafe;
+}
+
+.admin-room-review__table-shell {
+  padding: 18px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(24, 38, 61, 0.08);
+}
+
+.admin-room-review__room-name {
+  font-weight: 700;
+  color: #18263d;
+}
+
+.admin-room-review__sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #7f90a7;
+}
+
+.admin-room-review__detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 18px;
+}
+
+.admin-room-review__tags {
+  margin-top: 10px;
+}
+
+.admin-room-review__description {
+  margin: 8px 0 0;
+  line-height: 1.7;
+  color: #465a74;
+}
+
+.admin-room-review__description--danger {
+  color: #cf1322;
+}
+
+.admin-room-review__images {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-room-review__image {
+  width: 100%;
+  border-radius: 16px;
+}
+
+.admin-room-review__empty {
+  padding: 40px 0;
+}
+
+@media (max-width: 768px) {
+  .admin-room-review__detail-grid,
+  .admin-room-review__images {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

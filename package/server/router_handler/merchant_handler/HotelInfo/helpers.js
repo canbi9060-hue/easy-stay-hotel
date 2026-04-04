@@ -1,6 +1,3 @@
-const fs = require('fs');
-const path = require('path');
-
 const {
   maxTagCount,
   maxTagLength,
@@ -11,32 +8,8 @@ const {
   hotelImageGroupList,
   hotelCertificateGroupList,
 } = require('./constants');
-
-const safeTrim = (value) => String(value ?? '').trim();
-
-const parseJsonArray = (value) => {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-  if (typeof value !== 'string') return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    return [];
-  }
-};
-
-const parseJsonObject = (value) => {
-  if (!value) return {};
-  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
-  if (typeof value !== 'string') return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-  } catch (error) {
-    return {};
-  }
-};
+const { safeTrim } = require('../../utils/common');
+const { deleteLocalUploadSafely } = require('../../utils/files');
 
 const normalizeTags = (tags) => {
   if (!Array.isArray(tags)) return [];
@@ -83,43 +56,12 @@ const normalizeCustomFacilities = (value) => {
   )].slice(0, maxCustomFacilityCount);
 };
 
-const resolveServerPathByUploadPath = (filePath) => {
-  return path.join(__dirname, '..', '..', '..', filePath.replace(/^\//, ''));
-};
-
 const deleteLocalHotelImageSafely = (filePath) => {
-  if (!filePath || !filePath.startsWith('/uploads/hotel-images/')) {
-    return { ok: false, message: '图片路径不合法' };
-  }
-
-  const absolutePath = resolveServerPathByUploadPath(filePath);
-  if (!fs.existsSync(absolutePath)) {
-    return { ok: true, missing: true };
-  }
-
-  fs.unlinkSync(absolutePath);
-  return { ok: true };
+  return deleteLocalUploadSafely(filePath, '/uploads/hotel-images/');
 };
 
 const deleteLocalHotelCertificateSafely = (filePath) => {
-  if (!filePath || !filePath.startsWith('/uploads/hotel-certificates/')) {
-    return { ok: false, message: '证件路径不合法' };
-  }
-
-  const absolutePath = resolveServerPathByUploadPath(filePath);
-  if (!fs.existsSync(absolutePath)) {
-    return { ok: true, missing: true };
-  }
-
-  fs.unlinkSync(absolutePath);
-  return { ok: true };
-};
-
-const cleanupUploadedTempFile = (file) => {
-  if (!file?.path || !fs.existsSync(file.path)) {
-    return;
-  }
-  fs.unlinkSync(file.path);
+  return deleteLocalUploadSafely(filePath, '/uploads/hotel-certificates/');
 };
 
 const createEmptyHotelImages = () => ({
@@ -141,7 +83,7 @@ const mapHotelImage = (row) => ({
   id: row.id,
   group: row.image_group,
   filePath: row.file_path,
-  sortOrder: Number(row.sort_order) || 0,
+  fileName: row.file_name || '',
   sizeBytes: Number(row.size_bytes) || 0,
   mimeType: row.mime_type || '',
   createdAt: row.created_at,
@@ -161,7 +103,7 @@ const mapHotelCertificate = (row) => ({
   id: row.id,
   group: row.cert_group,
   filePath: row.file_path,
-  sortOrder: Number(row.sort_order) || 0,
+  fileName: row.file_name || '',
   sizeBytes: Number(row.size_bytes) || 0,
   mimeType: row.mime_type || '',
   createdAt: row.created_at,
@@ -177,26 +119,12 @@ const groupHotelCertificates = (rows) => {
   return result;
 };
 
-const createHandlerError = (kind, message, field = '') => {
-  const error = new Error(message);
-  error.kind = kind;
-  error.field = field;
-  return error;
-};
-
 module.exports = {
-  safeTrim,
-  parseJsonArray,
-  parseJsonObject,
   normalizeTags,
   normalizeFacilitySelections,
   normalizeCustomFacilities,
   deleteLocalHotelImageSafely,
   deleteLocalHotelCertificateSafely,
-  cleanupUploadedTempFile,
-  mapHotelImage,
   groupHotelImages,
-  mapHotelCertificate,
   groupHotelCertificates,
-  createHandlerError,
 };
