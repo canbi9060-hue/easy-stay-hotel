@@ -1,0 +1,197 @@
+.admin-hotel-review {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-hotel-review__header h1,
+.admin-hotel-review__title {
+  margin: 0;
+  font-size: 28px;
+  color: #18263d;
+}
+
+.admin-hotel-review__header p,
+.admin-hotel-review__subtitle {
+  margin: 8px 0 0;
+  color: #6f819a;
+}
+
+.admin-hotel-review__page-toolbar {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.admin-hotel-review__stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-hotel-review__stat-card {
+  padding: 20px;
+  border-radius: 18px;
+  border: 1px solid transparent;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(24, 38, 61, 0.08);
+}
+
+.admin-hotel-review__stat-card--all {
+  background: linear-gradient(135deg, #f5f8ff 0%, #edf3ff 100%);
+  border-color: #d8e5ff;
+}
+
+.admin-hotel-review__stat-card--reviewing {
+  background: linear-gradient(135deg, #eef7ff 0%, #d9efff 100%);
+  border-color: #b7ddff;
+}
+
+.admin-hotel-review__stat-card--approved {
+  background: linear-gradient(135deg, #f2fff7 0%, #ddf7e7 100%);
+  border-color: #b5e7c8;
+}
+
+.admin-hotel-review__stat-card--rejected {
+  background: linear-gradient(135deg, #fff4f4 0%, #ffe0e0 100%);
+  border-color: #ffc1c1;
+}
+
+.admin-hotel-review__stat-label {
+  color: #6f819a;
+  font-size: 14px;
+}
+
+.admin-hotel-review__stat-value {
+  margin-top: 12px;
+  font-size: 32px;
+  font-weight: 700;
+  color: #18263d;
+}
+
+.admin-hotel-review__tabs-shell,
+.admin-hotel-review__table-shell,
+.admin-hotel-review__section-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 14px 28px rgba(24, 38, 61, 0.08);
+}
+
+.admin-hotel-review__tabs-shell .ant-tabs-nav {
+  margin: 0;
+}
+
+.admin-hotel-review__table-title {
+  font-weight: 700;
+  color: #18263d;
+}
+
+.admin-hotel-review__table-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #7f90a7;
+}
+
+.admin-hotel-review__table-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-hotel-review__empty {
+  padding: 40px 0;
+}
+
+.admin-hotel-review__detail-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-hotel-review__page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-hotel-review__media-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.admin-hotel-review__media-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-hotel-review__media-title,
+.admin-hotel-review__action-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #18263d;
+}
+
+.admin-hotel-review__media-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.admin-hotel-review__media-grid--cert {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-hotel-review__media-image {
+  width: 100%;
+  border-radius: 16px;
+}
+
+.admin-hotel-review__action-card {
+  position: sticky;
+  bottom: 0;
+}
+
+.admin-hotel-review__action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.admin-hotel-review__action-desc {
+  margin-top: 6px;
+  color: #6f819a;
+}
+
+.admin-hotel-review__reason-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 992px) {
+  .admin-hotel-review__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-hotel-review__media-grid,
+  .admin-hotel-review__media-grid--cert {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-hotel-review__page-head,
+  .admin-hotel-review__action-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (max-width: 768px) {
+  .admin-hotel-review__stats,
+  .admin-hotel-review__media-grid,
+  .admin-hotel-review__media-grid--cert {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

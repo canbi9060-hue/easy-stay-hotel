@@ -16,6 +16,7 @@ import {
 } from 'antd';
 import {
   auditAdminRoomTypeAPI,
+  controlAdminRoomTypeSaleAPI,
   getAdminRoomTypeDetailAPI,
   getAdminRoomTypesAPI,
   getFileUrl,
@@ -31,6 +32,13 @@ import {
   roomTypeSaleStatusOptions,
 } from '../../../utils/room-type';
 import './index.scss';
+
+const roomTypeRejectReasonOptions = [
+  '房型图片不完整或与房型信息不符，请补充后重新提交。',
+  '房型名称或描述不清晰，无法准确判断房型特征，请修改后重新提交。',
+  '床型、面积、入住人数等关键信息不完整或不一致，请核实后重新提交。',
+  '房型设施标签与酒店已配置设施不匹配，请调整后重新提交。',
+];
 
 export default function RoomTypeReview() {
   const [loading, setLoading] = useState(true);
@@ -124,6 +132,19 @@ export default function RoomTypeReview() {
     setRejectOpen(true);
   }, [rejectForm]);
 
+  const handleSaleControl = useCallback(async (record, action) => {
+    try {
+      await controlAdminRoomTypeSaleAPI(record.id, { action });
+      message.success(action === 'force_off' ? '房型已强行下架。' : '房型已恢复上架。');
+      refreshList();
+      if (detailData?.id === record.id) {
+        openDetail(record.id);
+      }
+    } catch (error) {
+      message.error(getRequestErrorMessage(error, '控制房型售卖状态失败。'));
+    }
+  }, [detailData?.id, openDetail, refreshList]);
+
   const handleRejectSubmit = useCallback(async () => {
     try {
       const values = await rejectForm.validateFields();
@@ -176,8 +197,8 @@ export default function RoomTypeReview() {
     {
       title: '售卖状态',
       dataIndex: 'isOnSale',
-      render: (value) => {
-        const meta = getSaleStatusMeta(value);
+      render: (value, record) => {
+        const meta = getSaleStatusMeta(value, record.isForcedOffSale);
         return <Tag color={meta.color}>{meta.text}</Tag>;
       },
     },
@@ -204,10 +225,16 @@ export default function RoomTypeReview() {
               <Button type="link" size="small" danger onClick={() => openRejectModal(record)}>驳回</Button>
             </>
           ) : null}
+          {Number(record.auditStatus) === ROOM_TYPE_AUDIT_STATUS.APPROVED && Number(record.isForcedOffSale) === 0 && Number(record.isOnSale) === 1 ? (
+            <Button type="link" size="small" danger onClick={() => handleSaleControl(record, 'force_off')}>强行下架</Button>
+          ) : null}
+          {Number(record.auditStatus) === ROOM_TYPE_AUDIT_STATUS.APPROVED && Number(record.isForcedOffSale) === 1 ? (
+            <Button type="link" size="small" onClick={() => handleSaleControl(record, 'restore_on')}>恢复上架</Button>
+          ) : null}
         </Space>
       ),
     },
-  ]), [handleApprove, openDetail, openRejectModal]);
+  ]), [handleApprove, handleSaleControl, openDetail, openRejectModal]);
 
   return (
     <div className="admin-room-review">
@@ -283,13 +310,15 @@ export default function RoomTypeReview() {
         </Spin>
       </div>
 
-      <Drawer title="房型审核详情" width={760} open={detailOpen} onClose={() => setDetailOpen(false)} destroyOnClose>
+      <Drawer title="房型审核详情" size={760} open={detailOpen} onClose={() => setDetailOpen(false)} destroyOnHidden>
         <Spin spinning={detailLoading}>
           {!detailData ? <Empty description="暂无详情" /> : (
             <Space direction="vertical" size={20} style={{ width: '100%' }}>
               <Space wrap>
                 <Tag color={getAuditStatusMeta(detailData.auditStatus).color}>{getAuditStatusMeta(detailData.auditStatus).text}</Tag>
-                <Tag color={getSaleStatusMeta(detailData.isOnSale).color}>{getSaleStatusMeta(detailData.isOnSale).text}</Tag>
+                <Tag color={getSaleStatusMeta(detailData.isOnSale, detailData.isForcedOffSale).color}>
+                  {getSaleStatusMeta(detailData.isOnSale, detailData.isForcedOffSale).text}
+                </Tag>
                 <Tag>{detailData.merchantName || `商家 #${detailData.merchantUserId}`}</Tag>
               </Space>
 
@@ -352,6 +381,19 @@ export default function RoomTypeReview() {
         okButtonProps={{ danger: true, loading: rejectSubmitting }}
       >
         <Form form={rejectForm} layout="vertical">
+          <Form.Item label="常用原因">
+            <div className="admin-room-review__reason-shortcuts">
+              {roomTypeRejectReasonOptions.map((reason) => (
+                <Button
+                  key={reason}
+                  size="small"
+                  onClick={() => rejectForm.setFieldsValue({ auditRemark: reason })}
+                >
+                  {reason}
+                </Button>
+              ))}
+            </div>
+          </Form.Item>
           <Form.Item
             label="驳回原因"
             name="auditRemark"

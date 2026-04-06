@@ -20,6 +20,7 @@ CREATE TABLE `merchant_hotels` (
   `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
   `review_status` enum('incomplete','reviewing','rejected_pending_fix','approved') NOT NULL DEFAULT 'incomplete' COMMENT '审核状态',
+  `review_remark` varchar(100) NOT NULL DEFAULT '' COMMENT '审核备注/驳回原因',
   `accommodation_type` enum('hotel','homestay') NOT NULL DEFAULT 'hotel' COMMENT '住宿类型',
   `star_level` enum('one','two','three','four','five') NOT NULL DEFAULT 'three' COMMENT '酒店星级',
   `hotel_name` varchar(100) NOT NULL DEFAULT '' COMMENT '酒店名称',
@@ -42,6 +43,7 @@ CREATE TABLE `merchant_hotels` (
   `business_end_time` char(5) NOT NULL DEFAULT '18:00' COMMENT '营业结束时间',
   `check_in_time` char(5) NOT NULL DEFAULT '14:00' COMMENT '入住时间',
   `check_out_time` char(5) NOT NULL DEFAULT '12:00' COMMENT '退房时间',
+  `total_floor_count` int unsigned NOT NULL DEFAULT '1' COMMENT '总楼层数',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -49,6 +51,30 @@ CREATE TABLE `merchant_hotels` (
   KEY `idx_review_status` (`review_status`),
   CONSTRAINT `fk_merchant_hotels_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家酒店资料表';
+
+CREATE TABLE `merchant_hotel_profile_drafts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
+  `payload_json` json NOT NULL COMMENT '酒店资料草稿JSON',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_merchant_hotel_profile_drafts_user` (`merchant_user_id`),
+  CONSTRAINT `fk_merchant_hotel_profile_drafts_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家酒店资料草稿表';
+
+CREATE TABLE `merchant_hotel_floors` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
+  `floor_number` int unsigned NOT NULL COMMENT '楼层序号',
+  `floor_label` varchar(20) NOT NULL DEFAULT '' COMMENT '楼层名称',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_merchant_hotel_floors_number` (`merchant_user_id`,`floor_number`),
+  KEY `idx_merchant_hotel_floors_user` (`merchant_user_id`),
+  CONSTRAINT `fk_merchant_hotel_floors_hotel` FOREIGN KEY (`merchant_user_id`) REFERENCES `merchant_hotels` (`merchant_user_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家酒店楼层表';
 
 CREATE TABLE `merchant_hotel_images` (
   `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -66,6 +92,21 @@ CREATE TABLE `merchant_hotel_images` (
   CONSTRAINT `fk_merchant_hotel_images_hotel` FOREIGN KEY (`merchant_user_id`) REFERENCES `merchant_hotels` (`merchant_user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家酒店图片表';
 
+CREATE TABLE `merchant_hotel_image_drafts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
+  `image_group` enum('signboard','frontdesk','facility','carousel') NOT NULL COMMENT '图片分组',
+  `file_path` varchar(255) NOT NULL COMMENT '图片访问路径',
+  `file_name` varchar(255) NOT NULL DEFAULT '' COMMENT '原始文件名',
+  `mime_type` varchar(50) NOT NULL DEFAULT '' COMMENT '文件MIME类型',
+  `size_bytes` int unsigned NOT NULL DEFAULT '0' COMMENT '文件大小（字节）',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_merchant_hotel_image_drafts_group` (`merchant_user_id`,`image_group`),
+  CONSTRAINT `fk_merchant_hotel_image_drafts_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家酒店图片草稿表';
+
 CREATE TABLE `merchant_hotel_certificates` (
   `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
@@ -81,6 +122,21 @@ CREATE TABLE `merchant_hotel_certificates` (
   CONSTRAINT `fk_merchant_hotel_certificates_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_merchant_hotel_certificates_hotel` FOREIGN KEY (`merchant_user_id`) REFERENCES `merchant_hotels` (`merchant_user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家资质证件表';
+
+CREATE TABLE `merchant_hotel_certificate_drafts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
+  `cert_group` enum('business_license','legal_person_front','legal_person_back','special_permit','other_qualification') NOT NULL COMMENT '资质证件分组',
+  `file_path` varchar(255) NOT NULL COMMENT '图片访问路径',
+  `file_name` varchar(255) NOT NULL DEFAULT '' COMMENT '原始文件名',
+  `mime_type` varchar(50) NOT NULL DEFAULT '' COMMENT '文件MIME类型',
+  `size_bytes` int unsigned NOT NULL DEFAULT '0' COMMENT '文件大小（字节）',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_merchant_hotel_certificate_drafts_group` (`merchant_user_id`,`cert_group`),
+  CONSTRAINT `fk_merchant_hotel_certificate_drafts_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家资质证件草稿表';
 
 CREATE TABLE `merchant_room_types` (
   `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
@@ -98,16 +154,21 @@ CREATE TABLE `merchant_room_types` (
   `audit_status` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '审核状态：0审核中 1已通过 2已驳回',
   `audit_remark` varchar(500) NOT NULL DEFAULT '' COMMENT '审核备注/驳回原因',
   `is_on_sale` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '上架状态：0下架 1上架',
+  `is_forced_off_sale` tinyint unsigned NOT NULL DEFAULT '0' COMMENT '平台强制下架状态：0否 1是',
   `audit_admin_id` int unsigned DEFAULT NULL COMMENT '审核管理员ID',
+  `forced_off_admin_id` int unsigned DEFAULT NULL COMMENT '强制下架管理员ID',
   `audit_at` datetime DEFAULT NULL COMMENT '审核时间',
+  `forced_off_at` datetime DEFAULT NULL COMMENT '强制下架时间',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
   KEY `idx_merchant_room_types_merchant` (`merchant_user_id`),
   KEY `idx_merchant_room_types_audit_sale` (`audit_status`,`is_on_sale`),
   KEY `idx_merchant_room_types_updated` (`updated_at`),
+  KEY `fk_merchant_room_types_forced_off_admin` (`forced_off_admin_id`),
   CONSTRAINT `fk_merchant_room_types_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-  CONSTRAINT `fk_merchant_room_types_admin` FOREIGN KEY (`audit_admin_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+  CONSTRAINT `fk_merchant_room_types_admin` FOREIGN KEY (`audit_admin_id`) REFERENCES `users` (`id`) ON DELETE SET NULL,
+  CONSTRAINT `fk_merchant_room_types_forced_off_admin` FOREIGN KEY (`forced_off_admin_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家房型表';
 
 CREATE TABLE `merchant_room_type_images` (
@@ -123,3 +184,30 @@ CREATE TABLE `merchant_room_type_images` (
   KEY `idx_room_type_images_room_id` (`room_type_id`,`id`),
   CONSTRAINT `fk_room_type_images_room_type` FOREIGN KEY (`room_type_id`) REFERENCES `merchant_room_types` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家房型图片表';
+
+CREATE TABLE `merchant_room_type_drafts` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `merchant_user_id` int unsigned NOT NULL COMMENT '商家用户ID',
+  `source_room_type_id` int unsigned NOT NULL DEFAULT '0' COMMENT '来源正式房型ID，0表示新增房型草稿',
+  `payload_json` json NOT NULL COMMENT '房型草稿JSON',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_merchant_room_type_drafts_source` (`merchant_user_id`,`source_room_type_id`),
+  KEY `idx_merchant_room_type_drafts_updated` (`merchant_user_id`,`updated_at`),
+  CONSTRAINT `fk_merchant_room_type_drafts_user` FOREIGN KEY (`merchant_user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家房型草稿表';
+
+CREATE TABLE `merchant_room_type_draft_images` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `draft_id` int unsigned NOT NULL COMMENT '房型草稿ID',
+  `file_path` varchar(255) NOT NULL COMMENT '图片访问路径',
+  `file_name` varchar(255) NOT NULL DEFAULT '' COMMENT '原始文件名',
+  `mime_type` varchar(50) NOT NULL DEFAULT '' COMMENT '文件MIME类型',
+  `size_bytes` int unsigned NOT NULL DEFAULT '0' COMMENT '文件大小（字节）',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_room_type_draft_images_draft_id` (`draft_id`,`id`),
+  CONSTRAINT `fk_room_type_draft_images_draft` FOREIGN KEY (`draft_id`) REFERENCES `merchant_room_type_drafts` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='商家房型草稿图片表';

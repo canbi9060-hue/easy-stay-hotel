@@ -20,6 +20,9 @@ const RoomStatus = lazy(() => import('../pages/Merchant/RoomStatus'));
 const AdminLayout = lazy(() => import('../pages/Admin/layout'));
 const AdminDashboard = lazy(() => import('../pages/Admin/Dashboard'));
 const AdminRoomTypeReview = lazy(() => import('../pages/Admin/RoomTypeReview'));
+const AdminHotelReview = lazy(() => import('../pages/Admin/HotelReview'));
+const AdminHotelReviewDetail = lazy(() => import('../pages/Admin/HotelReview/DetailPage'));
+const AdminHotelReviewAudit = lazy(() => import('../pages/Admin/HotelReview/AuditPage'));
 const Profile = lazy(() => import('../pages/Auth/Profile'));
 const NotFound = lazy(() => import('../pages/Auth/NotFound'));
 
@@ -80,6 +83,9 @@ export const routes = [
       { path: '', element: <Navigate to="/admin/dashboard" replace /> },
       { path: 'dashboard', element: <AdminDashboard /> },
       { path: 'room-type-review', element: <AdminRoomTypeReview /> },
+      { path: 'hotel-review', element: <AdminHotelReview /> },
+      { path: 'hotel-review/:merchantUserId', element: <AdminHotelReviewDetail /> },
+      { path: 'hotel-review/:merchantUserId/audit', element: <AdminHotelReviewAudit /> },
       { path: 'profile', element: <Profile /> },
     ],
   },

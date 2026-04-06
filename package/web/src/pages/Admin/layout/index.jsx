@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { AuditOutlined, DashboardOutlined } from '@ant-design/icons';
+import { AuditOutlined, BankOutlined, DashboardOutlined } from '@ant-design/icons';
 
 import Header from '../../../components/Header';
 
@@ -10,6 +10,11 @@ const { Sider, Content } = Layout;
 export default function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
+  const selectedKey = location.pathname.startsWith('/admin/hotel-review')
+    ? '/admin/hotel-review'
+    : location.pathname.startsWith('/admin/room-type-review')
+      ? '/admin/room-type-review'
+      : location.pathname;
 
   const menuItems = [
     {
@@ -23,6 +28,12 @@ export default function AdminLayout() {
       icon: <AuditOutlined />,
       label: '房型审核',
       onClick: () => navigate('/admin/room-type-review'),
+    },
+    {
+      key: '/admin/hotel-review',
+      icon: <BankOutlined />,
+      label: '酒店审核',
+      onClick: () => navigate('/admin/hotel-review'),
     },
   ];
 
@@ -46,7 +57,7 @@ export default function AdminLayout() {
         <Menu
           theme="dark"
           mode="inline"
-          selectedKeys={[location.pathname]}
+          selectedKeys={[selectedKey]}
           items={menuItems}
           style={{ height: '100%', borderRight: 0 }}
         />

@@ -14,7 +14,12 @@ import {
   Upload,
 } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
-import { maxRoomTypeImageCount, roomTypeFacilitySuggestions } from '../../../../utils/room-type';
+import CompactNumberInput from '../../../../components/CompactNumberInput';
+import {
+  getHotelFloorOptions,
+  hasHotelFloorInfo,
+  maxRoomTypeImageCount,
+} from '../../../../utils/room-type';
 
 const { TextArea } = Input;
 
@@ -33,14 +38,25 @@ export default function RoomTypeFormModal({
   submitting,
   imageFileList,
   statusNotice,
+  editLocked,
+  submitDisabled,
+  hotelFloorInfo,
+  floorSelectionIssue,
+  hotelFacilityOptions,
+  facilityTagIssue,
   onClose,
   onBeforeUpload,
   onRemoveImage,
+  onFloorStartChange,
   onSaveDraft,
   onSubmit,
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
+  const floorStart = Form.useWatch('floorStart', form);
+  const hotelFloorReady = hasHotelFloorInfo(hotelFloorInfo);
+  const floorStartOptions = getHotelFloorOptions(hotelFloorInfo);
+  const floorEndOptions = getHotelFloorOptions(hotelFloorInfo, Number.isInteger(Number(floorStart)) ? Number(floorStart) : 1);
 
   const uploadButton = (
     <button type="button" className="room-type__upload-trigger">
@@ -71,7 +87,7 @@ export default function RoomTypeFormModal({
           </div>
 
           {statusNotice?.message ? (
-            <Alert type={statusNotice.type} showIcon message={statusNotice.message} className="room-type__modal-alert" />
+            <Alert type={statusNotice.type} showIcon title={statusNotice.message} className="room-type__modal-alert" />
           ) : null}
 
           <Spin spinning={loading || submitting}>
@@ -92,15 +108,62 @@ export default function RoomTypeFormModal({
               </Card>
 
               <Card className="room-type__modal-card" title="布局接待">
+                {!hotelFloorReady ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    title="请先在酒店资料中完善总楼层"
+                    className="room-type__modal-alert"
+                  />
+                ) : null}
+                {floorSelectionIssue?.message ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    title="当前楼层说明需要重新选择"
+                    description={floorSelectionIssue.floorText ? `当前楼层说明：${floorSelectionIssue.floorText}。${floorSelectionIssue.message}` : floorSelectionIssue.message}
+                    className="room-type__modal-alert"
+                  />
+                ) : null}
                 <Row gutter={16}>
                   <Col xs={24} md={8}>
                     <Form.Item label="面积（㎡）" name="areaSize" rules={[{ required: true, message: '请输入房间面积' }]}>
-                      <InputNumber min={1} precision={2} addonAfter="㎡" style={{ width: '100%' }} />
+                      <CompactNumberInput min={1} precision={2} addon="㎡" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={8}>
-                    <Form.Item label="楼层说明" name="floorText" rules={[{ required: true, message: '请输入楼层说明' }]}>
-                      <Input maxLength={60} placeholder="例如：12-18层" />
+                    <Form.Item label="楼层说明" style={{ marginBottom: 0 }}>
+                      <div className="room-type__floor-picker">
+                        <div className="room-type__floor-picker-item">
+                          <span className="room-type__floor-picker-label">起始层</span>
+                          <Form.Item
+                            name="floorStart"
+                            rules={hotelFloorReady ? [{ required: true, message: '请选择起始楼层' }] : []}
+                          >
+                            <Select
+                              options={floorStartOptions}
+                              placeholder="请选择"
+                              disabled={!hotelFloorReady}
+                              onChange={onFloorStartChange}
+                              allowClear
+                            />
+                          </Form.Item>
+                        </div>
+                        <div className="room-type__floor-picker-item">
+                          <span className="room-type__floor-picker-label">结束层</span>
+                          <Form.Item
+                            name="floorEnd"
+                            rules={hotelFloorReady ? [{ required: true, message: '请选择结束楼层' }] : []}
+                          >
+                            <Select
+                              options={floorEndOptions}
+                              placeholder="请选择"
+                              disabled={!hotelFloorReady || !floorStart}
+                              allowClear
+                            />
+                          </Form.Item>
+                        </div>
+                      </div>
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={4}>
@@ -110,23 +173,47 @@ export default function RoomTypeFormModal({
                   </Col>
                   <Col xs={24} md={4}>
                     <Form.Item label="最多入住" name="maxGuests" rules={[{ required: true, message: '请输入最多入住人数' }]}>
-                      <InputNumber min={1} precision={0} addonAfter="人" style={{ width: '100%' }} />
+                      <CompactNumberInput min={1} precision={0} addon="人" />
                     </Form.Item>
                   </Col>
                 </Row>
               </Card>
 
               <Card className="room-type__modal-card" title="描述设施">
+                {!hotelFacilityOptions.length ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    title="请先在酒店信息页勾选或添加设施"
+                    className="room-type__modal-alert"
+                  />
+                ) : null}
+                {facilityTagIssue?.message ? (
+                  <Alert
+                    type="warning"
+                    showIcon
+                    title="当前设施标签需要重新选择"
+                    description={facilityTagIssue.invalidTags?.length
+                      ? `当前无效标签：${facilityTagIssue.invalidTags.join('、')}。${facilityTagIssue.message}`
+                      : facilityTagIssue.message}
+                    className="room-type__modal-alert"
+                  />
+                ) : null}
                 <Form.Item label="房型描述" name="description" rules={[{ required: true, message: '请输入房型描述' }]}>
                   <TextArea rows={4} maxLength={2000} placeholder="描述房型亮点、空间体验、适合人群等。" />
                 </Form.Item>
-                <Form.Item label="设施标签" name="facilityTags" rules={[{ required: true, message: '请至少填写 1 个设施标签' }]}>
+                <Form.Item
+                  label="设施标签"
+                  name="facilityTags"
+                  rules={[{ required: true, type: 'array', min: 1, message: '请至少选择 1 个房型设施标签' }]}
+                >
                   <Select
-                    mode="tags"
-                    tokenSeparators={[',']}
-                    options={roomTypeFacilitySuggestions.map((item) => ({ label: item, value: item }))}
-                    placeholder="输入或选择房型设施标签"
+                    mode="multiple"
+                    options={hotelFacilityOptions}
+                    placeholder={hotelFacilityOptions.length ? '请选择酒店已配置设施' : '请先在酒店信息页勾选或添加设施'}
+                    disabled={!hotelFacilityOptions.length}
                     maxTagCount="responsive"
+                    optionFilterProp="label"
                   />
                 </Form.Item>
               </Card>
@@ -171,12 +258,12 @@ export default function RoomTypeFormModal({
                 <Row gutter={16}>
                   <Col xs={24} md={12}>
                     <Form.Item label="销售价" name="salePrice" rules={[{ required: true, message: '请输入销售价' }]}>
-                      <InputNumber min={0.01} precision={2} addonBefore="￥" style={{ width: '100%' }} />
+                      <CompactNumberInput min={0.01} precision={2} addon="￥" addonPosition="prefix" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
                     <Form.Item label="划线价" name="listPrice" rules={[{ required: true, message: '请输入划线价' }]}>
-                      <InputNumber min={0.01} precision={2} addonBefore="￥" style={{ width: '100%' }} />
+                      <CompactNumberInput min={0.01} precision={2} addon="￥" addonPosition="prefix" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -185,8 +272,8 @@ export default function RoomTypeFormModal({
           </Spin>
 
           <div className="room-type__modal-footer">
-            <Button onClick={onSaveDraft} disabled={loading || submitting}>保存草稿</Button>
-            <Button type="primary" onClick={onSubmit} loading={submitting}>提交审核</Button>
+            <Button onClick={onSaveDraft} disabled={loading || submitting || editLocked}>保存草稿</Button>
+            <Button type="primary" onClick={onSubmit} loading={submitting} disabled={submitDisabled}>提交审核</Button>
           </div>
         </div>
       </div>

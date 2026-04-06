@@ -118,7 +118,8 @@ const getMerchantRoomTypeSuggestions = async ({
        rt.id,
        rt.room_name,
        rt.audit_status,
-       rt.is_on_sale
+       rt.is_on_sale,
+       rt.is_forced_off_sale
      FROM merchant_room_types rt
      WHERE ${whereSql}
      ORDER BY
@@ -246,11 +247,142 @@ const getRoomTypeImagesByRoomTypeId = async (roomTypeId, executor = null, option
   );
 };
 
+const getRoomTypeDraftRowsByMerchantUserId = async (merchantUserId, executor = null) => {
+  return runQuery(
+    executor,
+    `SELECT
+       d.*,
+       rt.audit_status AS source_audit_status
+     FROM merchant_room_type_drafts d
+     LEFT JOIN merchant_room_types rt
+       ON rt.id = d.source_room_type_id
+      AND rt.merchant_user_id = d.merchant_user_id
+     WHERE d.merchant_user_id = ?
+     ORDER BY d.updated_at DESC, d.id DESC`,
+    [merchantUserId]
+  );
+};
+
+const getRoomTypeDraftRowBySource = async (merchantUserId, sourceRoomTypeId, executor = null, options = {}) => {
+  const suffix = options.forUpdate ? ' FOR UPDATE' : '';
+  const [row] = await runQuery(
+    executor,
+    `SELECT
+       d.*,
+       rt.audit_status AS source_audit_status
+     FROM merchant_room_type_drafts d
+     LEFT JOIN merchant_room_types rt
+       ON rt.id = d.source_room_type_id
+      AND rt.merchant_user_id = d.merchant_user_id
+     WHERE d.merchant_user_id = ? AND d.source_room_type_id = ?
+     LIMIT 1${suffix}`,
+    [merchantUserId, sourceRoomTypeId]
+  );
+  return row || null;
+};
+
+const saveRoomTypeDraftBySource = async (merchantUserId, sourceRoomTypeId, payload, executor = null) => {
+  await runQuery(
+    executor,
+    `INSERT INTO merchant_room_type_drafts (merchant_user_id, source_room_type_id, payload_json)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE payload_json = VALUES(payload_json)`,
+    [merchantUserId, sourceRoomTypeId, JSON.stringify(payload || {})]
+  );
+
+  return getRoomTypeDraftRowBySource(merchantUserId, sourceRoomTypeId, executor);
+};
+
+const deleteRoomTypeDraftBySource = async (merchantUserId, sourceRoomTypeId, executor = null) => {
+  await runQuery(
+    executor,
+    `DELETE FROM merchant_room_type_drafts
+     WHERE merchant_user_id = ? AND source_room_type_id = ?`,
+    [merchantUserId, sourceRoomTypeId]
+  );
+};
+
+const getRoomTypeDraftImagesByDraftId = async (draftId, executor = null, options = {}) => {
+  const suffix = options.forUpdate ? ' FOR UPDATE' : '';
+  return runQuery(
+    executor,
+    `SELECT *
+     FROM merchant_room_type_draft_images
+     WHERE draft_id = ?
+     ORDER BY id ASC${suffix}`,
+    [draftId]
+  );
+};
+
+const getRoomTypeDraftImagesByDraftIds = async (draftIds = [], executor = null) => {
+  const normalizedIds = [...new Set((Array.isArray(draftIds) ? draftIds : [])
+    .map((item) => Number(item))
+    .filter((item) => Number.isInteger(item) && item > 0))];
+
+  if (!normalizedIds.length) {
+    return [];
+  }
+
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  return runQuery(
+    executor,
+    `SELECT *
+     FROM merchant_room_type_draft_images
+     WHERE draft_id IN (${placeholders})
+     ORDER BY draft_id ASC, id ASC`,
+    normalizedIds
+  );
+};
+
+const getReferencedRoomTypeImageFilePaths = async (filePaths = [], executor = null) => {
+  const normalizedPaths = [...new Set((Array.isArray(filePaths) ? filePaths : []).filter(Boolean))];
+  if (!normalizedPaths.length) {
+    return [];
+  }
+
+  const placeholders = normalizedPaths.map(() => '?').join(', ');
+  return runQuery(
+    executor,
+    `SELECT DISTINCT file_path
+     FROM merchant_room_type_images
+     WHERE file_path IN (${placeholders})
+     UNION
+     SELECT DISTINCT file_path
+     FROM merchant_room_type_draft_images
+     WHERE file_path IN (${placeholders})`,
+    [...normalizedPaths, ...normalizedPaths]
+  );
+};
+
 const getMerchantRoomTypeDetail = async (merchantUserId, roomTypeId) => {
   const row = await getMerchantRoomTypeRowById(merchantUserId, roomTypeId);
   if (!row) return null;
   const images = await getRoomTypeImagesByRoomTypeId(roomTypeId);
   return { row, images };
+};
+
+const getMerchantHotelReviewStatus = async (merchantUserId, executor = null) => {
+  const [row] = await runQuery(
+    executor,
+    `SELECT review_status
+     FROM merchant_hotels
+     WHERE merchant_user_id = ?
+     LIMIT 1`,
+    [merchantUserId]
+  );
+  return row?.review_status || '';
+};
+
+const getMerchantHotelRoomTypeMeta = async (merchantUserId, executor = null) => {
+  const [row] = await runQuery(
+    executor,
+    `SELECT review_status, total_floor_count, facility_selections, custom_facilities
+     FROM merchant_hotels
+     WHERE merchant_user_id = ?
+     LIMIT 1`,
+    [merchantUserId]
+  );
+  return row || null;
 };
 
 const getAdminRoomTypeDetail = async (roomTypeId) => {
@@ -267,6 +399,7 @@ const getVisibleRoomTypesByMerchantId = async (merchantUserId) => {
      WHERE merchant_user_id = ?
        AND audit_status = 1
        AND is_on_sale = 1
+       AND is_forced_off_sale = 0
      ORDER BY updated_at DESC, id DESC`,
     [merchantUserId]
   );
@@ -281,7 +414,16 @@ module.exports = {
   getMerchantRoomTypeRowById,
   getAdminRoomTypeRowById,
   getRoomTypeImagesByRoomTypeId,
+  getRoomTypeDraftRowsByMerchantUserId,
+  getRoomTypeDraftRowBySource,
+  saveRoomTypeDraftBySource,
+  deleteRoomTypeDraftBySource,
+  getRoomTypeDraftImagesByDraftId,
+  getRoomTypeDraftImagesByDraftIds,
+  getReferencedRoomTypeImageFilePaths,
   getMerchantRoomTypeDetail,
+  getMerchantHotelReviewStatus,
+  getMerchantHotelRoomTypeMeta,
   getAdminRoomTypeDetail,
   getVisibleRoomTypesByMerchantId,
 };

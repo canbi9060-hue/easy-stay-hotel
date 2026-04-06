@@ -28,7 +28,7 @@ export const starLevelOptions = [
 export const reviewStatusMap = {
   incomplete: { text: '待完善', color: 'orange' },
   reviewing: { text: '审核中', color: 'blue' },
-  rejected_pending_fix: { text: '驳回待修改', color: 'red' },
+  rejected_pending_fix: { text: '不通过', color: 'red' },
   approved: { text: '审核通过', color: 'green' },
 };
 
@@ -106,10 +106,22 @@ export const facilityOptionValueMap = facilityCategoryList.reduce((acc, category
   acc[category.key] = category.options.map((option) => option.value);
   return acc;
 }, {});
+export const facilityOptionLabelMap = facilityCategoryList.reduce((acc, category) => {
+  category.options.forEach((option) => {
+    acc[option.value] = option.label;
+  });
+  return acc;
+}, {});
 
 export const MAX_CUSTOM_FACILITY_COUNT = 20;
 export const MAX_CUSTOM_FACILITY_LENGTH = 30;
 export const MAX_INTRODUCTION_LENGTH = 200;
+export const DEFAULT_TOTAL_FLOOR_COUNT = 1;
+export const MAX_TOTAL_FLOOR_COUNT = 200;
+export const createFloorLabels = (totalFloorCount = DEFAULT_TOTAL_FLOOR_COUNT) => Array.from(
+  { length: totalFloorCount },
+  (_, index) => `${index + 1}层`
+);
 
 export const createEmptyFacilitySelections = () => ({
   infrastructure: [],
@@ -119,7 +131,9 @@ export const createEmptyFacilitySelections = () => ({
 });
 
 export const emptyHotelProfile = {
+  hasPendingDraft: false,
   reviewStatus: 'incomplete',
+  reviewRemark: '',
   accommodationType: 'hotel',
   starLevel: 'three',
   hotelName: '',
@@ -146,6 +160,10 @@ export const emptyHotelProfile = {
     businessEndTime: '18:00',
     checkInTime: '14:00',
     checkOutTime: '12:00',
+  },
+  floorInfo: {
+    totalFloorCount: DEFAULT_TOTAL_FLOOR_COUNT,
+    floors: createFloorLabels(DEFAULT_TOTAL_FLOOR_COUNT),
   },
 };
 
@@ -375,14 +393,21 @@ export const normalizeHotelProfile = (profile) => {
   const source = isPlainObject(profile) ? profile : {};
   const address = isPlainObject(source.address) ? source.address : {};
   const operationRules = isPlainObject(source.operationRules) ? source.operationRules : {};
+  const floorInfo = isPlainObject(source.floorInfo) ? source.floorInfo : {};
   const country =
     !address.country || address.country === 'China'
       ? emptyHotelProfile.address.country
       : address.country;
+  const reviewStatus = reviewStatusMap[source.reviewStatus] ? source.reviewStatus : emptyHotelProfile.reviewStatus;
+  const totalFloorCount = Number.isInteger(Number(floorInfo.totalFloorCount))
+    ? Math.min(MAX_TOTAL_FLOOR_COUNT, Math.max(DEFAULT_TOTAL_FLOOR_COUNT, Number(floorInfo.totalFloorCount)))
+    : emptyHotelProfile.floorInfo.totalFloorCount;
 
   return {
     ...emptyHotelProfile,
     ...source,
+    hasPendingDraft: Boolean(source.hasPendingDraft),
+    reviewStatus,
     address: {
       ...emptyHotelProfile.address,
       ...address,
@@ -399,6 +424,12 @@ export const normalizeHotelProfile = (profile) => {
       ...emptyHotelProfile.operationRules,
       ...operationRules,
     },
+    floorInfo: {
+      totalFloorCount,
+      floors: Array.isArray(floorInfo.floors) && floorInfo.floors.length === totalFloorCount
+        ? floorInfo.floors
+        : createFloorLabels(totalFloorCount),
+    },
   };
 };
 
@@ -410,4 +441,18 @@ export const formatAddressText = (address) => {
   return [address.country, address.province, address.city, address.district, address.detail]
     .filter(Boolean)
     .join('');
+};
+
+export const collectHotelFacilityLabels = (profile) => {
+  const selections = isPlainObject(profile?.facilitySelections) ? profile.facilitySelections : {};
+  const selectedLabels = facilityCategoryKeys
+    .flatMap((categoryKey) => ensureArray(selections[categoryKey]))
+    .map((value) => facilityOptionLabelMap[value] || '')
+    .filter(Boolean);
+  const customLabels = ensureArray(profile?.customFacilities)
+    .filter((item) => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return [...new Set([...selectedLabels, ...customLabels])];
 };

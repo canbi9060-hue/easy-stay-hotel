@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Alert,
+  Button,
   Form,
+  Modal,
+  Space,
   Tag,
 } from 'antd';
 import {
@@ -21,6 +24,7 @@ import {
   facilityCategoryList,
   hotelImageGroups,
   hotelInfoTabs,
+  MAX_TOTAL_FLOOR_COUNT,
   MAX_CUSTOM_FACILITY_LENGTH,
   MAX_INTRODUCTION_LENGTH,
   starLevelOptions,
@@ -35,6 +39,7 @@ import './index.scss';
 
 export default function HotelInfoCore() {
   const [form] = Form.useForm();
+  const [reasonModalOpen, setReasonModalOpen] = useState(false);
   const resolveImageUrl = getFileUrl;
 
   const {
@@ -86,12 +91,14 @@ export default function HotelInfoCore() {
   const { mapState, mapRefs, mapValues, mapActions } = useHotelInfoMap({
     form,
     activeTab: profileState.activeTab,
-    isReviewing: profileState.isReviewing,
     loading: profileState.loading,
     getErrorMessage: getRequestErrorMessage,
   });
 
   const isOpen24Hours = Form.useWatch(['operationRules', 'isOpen24Hours'], form);
+  const totalFloorCount = Form.useWatch(['floorInfo', 'totalFloorCount'], form) || emptyHotelProfile.floorInfo.totalFloorCount;
+  const isReadOnly = profileState.isReviewing;
+  const sharedReadOnlyProps = { readOnly: isReadOnly };
 
   const handleOpen24HoursChange = (event) => {
     const checked = Boolean(event?.target?.checked);
@@ -119,17 +126,17 @@ export default function HotelInfoCore() {
       prevDisabled={profileState.saving || profileState.submitting}
       nextDisabled={profileState.saving || profileState.submitting}
       showSubmit={profileState.isCertificatesTab}
-      saveDisabled={profileState.isReviewing || profileState.submitting}
+      saveDisabled={profileState.submitting || isReadOnly}
       submitDisabled={!profileState.canSubmitReview}
     />
   );
 
   const renderMapAlerts = () => (
     <>
-      {mapState.mapUnavailableReason ? <Alert type="warning" showIcon message="地图不可用" description={mapState.mapUnavailableReason} style={{ marginBottom: 12 }} /> : null}
-      {mapState.mapLoadError ? <Alert type="warning" showIcon message="地图加载失败" description={mapState.mapLoadError} style={{ marginBottom: 12 }} /> : null}
-      {mapState.addressLocateError ? <Alert type="warning" showIcon message="根据地址定位失败" description={mapState.addressLocateError} style={{ marginBottom: 12 }} /> : null}
-      {mapState.pointPickError ? <Alert type="warning" showIcon message="根据地图选点回填地址失败" description={mapState.pointPickError} style={{ marginBottom: 12 }} /> : null}
+      {mapState.mapUnavailableReason ? <Alert type="warning" showIcon title="地图不可用" description={mapState.mapUnavailableReason} style={{ marginBottom: 12 }} /> : null}
+      {mapState.mapLoadError ? <Alert type="warning" showIcon title="地图加载失败" description={mapState.mapLoadError} style={{ marginBottom: 12 }} /> : null}
+      {mapState.addressLocateError ? <Alert type="warning" showIcon title="根据地址定位失败" description={mapState.addressLocateError} style={{ marginBottom: 12 }} /> : null}
+      {mapState.pointPickError ? <Alert type="warning" showIcon title="根据地图选点回填地址失败" description={mapState.pointPickError} style={{ marginBottom: 12 }} /> : null}
     </>
   );
 
@@ -156,13 +163,15 @@ export default function HotelInfoCore() {
     onMapModalAfterOpenChange: mapActions.onMapModalAfterOpenChange,
     mapStatusText: mapState.mapStatusText,
     mapUnavailableReason: mapState.mapUnavailableReason,
-    mapActionDisabled: profileState.isReviewing || Boolean(mapState.mapUnavailableReason),
+    mapActionDisabled: Boolean(mapState.mapUnavailableReason),
     validatePhone,
     validateEmail,
     MAX_INTRODUCTION_LENGTH,
+    totalFloorCount,
+    MAX_TOTAL_FLOOR_COUNT,
     isOpen24Hours,
     handleOpen24HoursChange,
-    readOnly: profileState.isReviewing,
+    ...sharedReadOnlyProps,
   };
 
   const imagesProps = {
@@ -173,7 +182,7 @@ export default function HotelInfoCore() {
     onDeleteImage: removeHotelImage,
     beforeHotelImageUpload,
     toUploadFileItem,
-    readOnly: profileState.isReviewing,
+    ...sharedReadOnlyProps,
   };
 
   const facilitiesProps = {
@@ -184,7 +193,7 @@ export default function HotelInfoCore() {
     handleAddCustomFacility: profileActions.handleAddCustomFacility,
     customFacilities: profileState.customFacilities,
     handleRemoveCustomFacility: profileActions.handleRemoveCustomFacility,
-    readOnly: profileState.isReviewing,
+    ...sharedReadOnlyProps,
   };
 
   const certificatesProps = {
@@ -195,7 +204,7 @@ export default function HotelInfoCore() {
     onDeleteCertificate: removeHotelCertificate,
     beforeCertificateUpload,
     toUploadFileItem,
-    readOnly: profileState.isReviewing,
+    ...sharedReadOnlyProps,
   };
 
   return (
@@ -205,15 +214,33 @@ export default function HotelInfoCore() {
           <h2 className="hotel-info__title">酒店资料</h2>
           <p className="hotel-info__subtitle">完善酒店资料，便于后续审核与展示。</p>
         </div>
-        <Tag color={profileState.reviewStatusMeta.color} className="hotel-info__status-tag">{profileState.reviewStatusMeta.text}</Tag>
+        {profileState.statusReady && profileState.reviewStatusMeta ? (
+          <Space size={8} wrap>
+            <Tag color={profileState.reviewStatusMeta.color} className="hotel-info__status-tag">{profileState.reviewStatusMeta.text}</Tag>
+            {profileState.reviewStatus === 'rejected_pending_fix' && profileState.reviewRemark ? (
+              <Button type="link" onClick={() => setReasonModalOpen(true)}>
+                查看原因
+              </Button>
+            ) : null}
+          </Space>
+        ) : null}
       </div>
+
+      {profileState.hasPendingDraft && !profileState.isReviewing ? (
+        <Alert
+          type="warning"
+          showIcon
+          title="您当前有未提交的修改内容，提交审核后才会正式生效。"
+          className="hotel-info__draft-alert"
+        />
+      ) : null}
 
       <Form
         form={form}
         layout="vertical"
         initialValues={emptyHotelProfile}
         className="hotel-info__form"
-        disabled={profileState.isReviewing || profileState.initializing}
+        disabled={profileState.initializing}
       >
         <HotelInfoTabs
           activeTab={profileState.activeTab}
@@ -226,6 +253,20 @@ export default function HotelInfoCore() {
         />
         {formActionsNode}
       </Form>
+
+      <Modal
+        open={reasonModalOpen}
+        title="驳回原因"
+        footer={null}
+        onCancel={() => setReasonModalOpen(false)}
+      >
+        <Alert
+          type="error"
+          showIcon
+          title="酒店资料审核未通过"
+          description={profileState.reviewRemark || '暂无驳回原因'}
+        />
+      </Modal>
     </div>
   );
 }

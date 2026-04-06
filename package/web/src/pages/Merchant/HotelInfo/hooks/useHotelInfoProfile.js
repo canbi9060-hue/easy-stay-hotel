@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { message } from 'antd';
 import {
-  getMerchantHotelProfileAPI,
-  submitMerchantHotelProfileReviewAPI,
-  updateMerchantHotelProfileAPI,
-} from '../../../../utils/request';
-import {
-  buildHotelMediaSubmitPayload,
   certificateGroupLabels,
   emptyHotelProfile,
   findMissingRequiredMediaGroups,
@@ -14,10 +8,14 @@ import {
   hotelImageGroupLabels,
   MAX_CUSTOM_FACILITY_COUNT,
   MAX_CUSTOM_FACILITY_LENGTH,
+  loadMerchantHotelSnapshot,
+  normalizeMerchantHotelSnapshot,
   normalizeHotelProfile,
   reviewRequiredCertificateGroupKeys,
   reviewRequiredImageGroupKeys,
   reviewStatusMap,
+  saveMerchantHotelProfileSnapshot,
+  submitMerchantHotelProfileSnapshot,
 } from '../../../../utils/hotel-info';
 
 const addressDraftStorageKey = 'merchant_hotel_address_draft';
@@ -39,9 +37,12 @@ export default function useHotelInfoProfile({
   const [activeTab, setActiveTab] = useState(hotelInfoTabs[0].key);
   const [customFacilityInput, setCustomFacilityInput] = useState('');
   const [customFacilities, setCustomFacilities] = useState([]);
-  const [reviewStatus, setReviewStatus] = useState(emptyHotelProfile.reviewStatus);
+  const [reviewStatus, setReviewStatus] = useState(null);
+  const [reviewRemark, setReviewRemark] = useState(emptyHotelProfile.reviewRemark);
+  const [hasPendingDraft, setHasPendingDraft] = useState(false);
 
-  const reviewStatusMeta = reviewStatusMap[reviewStatus] || reviewStatusMap.incomplete;
+  const statusReady = reviewStatus !== null;
+  const reviewStatusMeta = statusReady ? (reviewStatusMap[reviewStatus] || null) : null;
   const isReviewing = reviewStatus === 'reviewing';
   const isCertificatesTab = activeTab === 'certificates';
   const submitValidation = useMemo(() => {
@@ -60,11 +61,13 @@ export default function useHotelInfoProfile({
   const hasPrevTab = activeTabIndex > 0;
   const hasNextTab = activeTabIndex >= 0 && activeTabIndex < tabOrder.length - 1;
 
-  const normalizeAndApplyProfile = useCallback((profileData) => {
-    const profile = normalizeHotelProfile(profileData);
+  const applyHotelSnapshot = useCallback((snapshot) => {
+    const profile = snapshot?.profile || normalizeHotelProfile();
     form.setFieldsValue(profile);
     setCustomFacilities(profile.customFacilities);
-    setReviewStatus(profile.reviewStatus);
+    setReviewStatus(snapshot?.reviewStatus ?? profile.reviewStatus);
+    setReviewRemark(snapshot?.reviewRemark ?? (profile.reviewRemark || ''));
+    setHasPendingDraft(Boolean(snapshot?.hasPendingDraft));
     return profile;
   }, [form]);
 
@@ -74,16 +77,20 @@ export default function useHotelInfoProfile({
     (async () => {
       try {
         setInitializing(true);
-        const profileRes = await getMerchantHotelProfileAPI();
+        setReviewStatus(null);
+        setReviewRemark('');
+        const snapshot = await loadMerchantHotelSnapshot();
         if (!active) return;
-        normalizeAndApplyProfile(profileRes.data);
+        applyHotelSnapshot(snapshot);
         loadHotelImages({ notify: false });
         loadHotelCertificates({ notify: false });
       } catch (error) {
         if (!active) return;
         form.setFieldsValue(emptyHotelProfile);
         setCustomFacilities(emptyHotelProfile.customFacilities);
-        setReviewStatus(emptyHotelProfile.reviewStatus);
+        setReviewStatus(null);
+        setReviewRemark(emptyHotelProfile.reviewRemark);
+        setHasPendingDraft(false);
         resetHotelImagesState();
         resetHotelCertificatesState();
         message.open({
@@ -106,7 +113,7 @@ export default function useHotelInfoProfile({
     getErrorMessage,
     loadHotelCertificates,
     loadHotelImages,
-    normalizeAndApplyProfile,
+    applyHotelSnapshot,
     resetHotelCertificatesState,
     resetHotelImagesState,
   ]);
@@ -135,37 +142,6 @@ export default function useHotelInfoProfile({
     setCustomFacilities((prev) => prev.filter((item) => item !== facilityName));
   }, []);
 
-  const buildProfileSubmitFormData = useCallback(() => {
-    const formValues = form.getFieldsValue(true);
-    const payload = normalizeHotelProfile({
-      ...formValues,
-      customFacilities,
-    });
-    const mediaPayload = buildHotelMediaSubmitPayload({
-      hotelImages,
-      hotelCertificates,
-    });
-    const formData = new FormData();
-    formData.append('payload', JSON.stringify({
-      ...payload,
-      hotelImagePlan: mediaPayload.hotelImagePlan,
-      hotelCertificatePlan: mediaPayload.hotelCertificatePlan,
-    }));
-    mediaPayload.hotelImageFiles.forEach((file) => {
-      formData.append('hotelImageFiles', file);
-    });
-    mediaPayload.hotelCertificateFiles.forEach((file) => {
-      formData.append('hotelCertificateFiles', file);
-    });
-
-    return formData;
-  }, [
-    customFacilities,
-    form,
-    hotelCertificates,
-    hotelImages,
-  ]);
-
   const refreshProfileMediaState = useCallback(async () => {
     await loadHotelImages({ notify: false });
     await loadHotelCertificates({ notify: false });
@@ -173,14 +149,21 @@ export default function useHotelInfoProfile({
   }, [loadHotelCertificates, loadHotelImages]);
 
   const saveAllProfile = useCallback(async () => {
-    const formData = buildProfileSubmitFormData();
-    const saved = await updateMerchantHotelProfileAPI(formData);
-    normalizeAndApplyProfile(saved.data);
+    const saved = await saveMerchantHotelProfileSnapshot({
+      formValues: form.getFieldsValue(true),
+      customFacilities,
+      hotelImages,
+      hotelCertificates,
+    });
+    applyHotelSnapshot(normalizeMerchantHotelSnapshot(saved.data));
     await refreshProfileMediaState();
     return saved.data;
   }, [
-    buildProfileSubmitFormData,
-    normalizeAndApplyProfile,
+    applyHotelSnapshot,
+    customFacilities,
+    form,
+    hotelCertificates,
+    hotelImages,
     refreshProfileMediaState,
   ]);
 
@@ -240,9 +223,13 @@ export default function useHotelInfoProfile({
     }
     try {
       setSubmitting(true);
-      const formData = buildProfileSubmitFormData();
-      const submitted = await submitMerchantHotelProfileReviewAPI(formData);
-      normalizeAndApplyProfile(submitted.data);
+      const submitted = await submitMerchantHotelProfileSnapshot({
+        formValues: form.getFieldsValue(true),
+        customFacilities,
+        hotelImages,
+        hotelCertificates,
+      });
+      applyHotelSnapshot(normalizeMerchantHotelSnapshot(submitted.data));
       await refreshProfileMediaState();
       message.success('酒店资料已提交审核。');
     } catch (error) {
@@ -254,8 +241,11 @@ export default function useHotelInfoProfile({
     getErrorMessage,
     handleSubmitValidationFailed,
     isReviewing,
-    normalizeAndApplyProfile,
-    buildProfileSubmitFormData,
+    applyHotelSnapshot,
+    customFacilities,
+    form,
+    hotelCertificates,
+    hotelImages,
     refreshProfileMediaState,
     submitValidation.ready,
   ]);
@@ -269,6 +259,10 @@ export default function useHotelInfoProfile({
       activeTab,
       customFacilityInput,
       customFacilities,
+      reviewStatus,
+      reviewRemark,
+      hasPendingDraft,
+      statusReady,
       reviewStatusMeta,
       isReviewing,
       isCertificatesTab,

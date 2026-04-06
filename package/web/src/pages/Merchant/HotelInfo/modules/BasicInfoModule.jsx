@@ -17,6 +17,7 @@ import {
   ClockCircleFilled,
   EnvironmentOutlined,
 } from '@ant-design/icons';
+import CompactNumberInput from '../../../../components/CompactNumberInput';
 
 export default function BasicInfoModule({
   accommodationTypeOptions,
@@ -45,10 +46,18 @@ export default function BasicInfoModule({
   validatePhone,
   validateEmail,
   MAX_INTRODUCTION_LENGTH,
+  totalFloorCount = 1,
+  MAX_TOTAL_FLOOR_COUNT,
   isOpen24Hours,
   handleOpen24HoursChange,
   readOnly = false,
 }) {
+  const floorPreviewText = totalFloorCount <= 1
+    ? '系统将自动生成：1层'
+    : totalFloorCount === 2
+      ? '系统将自动生成：1层、2层'
+      : `系统将自动生成：1层、2层 ... ${totalFloorCount}层`;
+
   return (
     <>
       <Row gutter={[24, 24]}>
@@ -57,7 +66,7 @@ export default function BasicInfoModule({
             <Row gutter={[20, 20]}>
               <Col xs={24} md={12}>
                 <Form.Item label="住宿类型" name="accommodationType" className="hotel-info__label-strong">
-                  <Radio.Group optionType="button" buttonStyle="solid" className="hotel-info__radio-group">
+                  <Radio.Group optionType="button" buttonStyle="solid" className="hotel-info__radio-group" disabled={readOnly}>
                     {accommodationTypeOptions.map((option) => (
                       <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>
                     ))}
@@ -66,12 +75,12 @@ export default function BasicInfoModule({
               </Col>
               <Col xs={24} md={12}>
                 <Form.Item label="星级" name="starLevel" className="hotel-info__label-strong">
-                  <Select options={starLevelOptions} placeholder="请选择星级" />
+                  <Select options={starLevelOptions} placeholder="请选择星级" disabled={readOnly} />
                 </Form.Item>
               </Col>
               <Col xs={24}>
                 <Form.Item className="hotel-info__label-strong hotel-info__label-no-required-mark" label="酒店名称" name="hotelName" rules={[{ required: true, message: '请输入酒店名称。' }]}>
-                  <Input maxLength={100} placeholder="请输入酒店名称" />
+                  <Input maxLength={100} placeholder="请输入酒店名称" disabled={readOnly} />
                 </Form.Item>
               </Col>
               <Col xs={24}>
@@ -84,6 +93,7 @@ export default function BasicInfoModule({
                     maxLength={MAX_INTRODUCTION_LENGTH}
                     showCount
                     autoSize={{ minRows: 4, maxRows: 6 }}
+                    disabled={readOnly}
                     placeholder="请输入酒店简介，如酒店特色、周边信息或服务亮点"
                   />
                 </Form.Item>
@@ -93,12 +103,12 @@ export default function BasicInfoModule({
                 <div className="hotel-info__section-title">酒店地址</div>
                 <Row gutter={[12, 12]}>
                   <Col xs={24} sm={12} lg={6}><Form.Item label="国家 / 地区" name={['address', 'country']}><Select options={countryOptions} disabled /></Form.Item></Col>
-                  <Col xs={24} sm={12} lg={6}><Form.Item label="省份" name={['address', 'province']} rules={[{ required: true, message: '请选择省份。' }]}><Select options={provinceOptions} placeholder="请选择省份" loading={regionLoading} onChange={handleProvinceChange} /></Form.Item></Col>
-                  <Col xs={24} sm={12} lg={6}><Form.Item label="城市" name={['address', 'city']} rules={[{ required: true, message: '请选择城市。' }]}><Select options={cityOptions} placeholder="请选择城市" loading={regionLoading} disabled={!addressValue?.province} onChange={handleCityChange} /></Form.Item></Col>
-                  <Col xs={24} sm={12} lg={6}><Form.Item label="区县" name={['address', 'district']} rules={[{ required: true, message: '请选择区县。' }]}><Select options={districtOptions} placeholder="请选择区县" loading={regionLoading} disabled={!addressValue?.city} onChange={handleDistrictChange} /></Form.Item></Col>
+                  <Col xs={24} sm={12} lg={6}><Form.Item className="hotel-info__label-no-required-mark" label="省份" name={['address', 'province']} rules={[{ required: true, message: '请选择省份。' }]}><Select options={provinceOptions} placeholder="请选择省份" loading={regionLoading} disabled={readOnly} onChange={handleProvinceChange} /></Form.Item></Col>
+                  <Col xs={24} sm={12} lg={6}><Form.Item className="hotel-info__label-no-required-mark" label="城市" name={['address', 'city']} rules={[{ required: true, message: '请选择城市。' }]}><Select options={cityOptions} placeholder="请选择城市" loading={regionLoading} disabled={readOnly || !addressValue?.province} onChange={handleCityChange} /></Form.Item></Col>
+                  <Col xs={24} sm={12} lg={6}><Form.Item className="hotel-info__label-no-required-mark" label="区县" name={['address', 'district']} rules={[{ required: true, message: '请选择区县。' }]}><Select options={districtOptions} placeholder="请选择区县" loading={regionLoading} disabled={readOnly || !addressValue?.city} onChange={handleDistrictChange} /></Form.Item></Col>
                 </Row>
                 <Form.Item name={['address', 'detail']} rules={[{ required: true, message: '请输入详细地址。' }]}>
-                  <Input maxLength={200} placeholder="请输入详细地址" prefix={<EnvironmentOutlined />} onChange={handleDetailInputChange} />
+                  <Input maxLength={200} placeholder="请输入详细地址" prefix={<EnvironmentOutlined />} disabled={readOnly} onChange={handleDetailInputChange} />
                 </Form.Item>
 
                 {renderMapAlerts()}
@@ -115,7 +125,7 @@ export default function BasicInfoModule({
                     <div className="hotel-info__map-preview" ref={previewMapContainerRef} />
                   )}
                   <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly || mapActionDisabled}>暂存定位</Button>
-                  <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={readOnly || mapActionDisabled}>展开地图</Button>
+                  <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={mapActionDisabled}>展开地图</Button>
                   {!mapUnavailableReason && mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
                 </div>
               </Col>
@@ -126,10 +136,10 @@ export default function BasicInfoModule({
           <div className="hotel-info__aside">
             <Card className="hotel-info__section-card hotel-info__info-card" title="联系方式">
               <Form.Item label="联系电话" name="contactPhone" rules={[{ validator: validatePhone }]}>
-                <Input placeholder="请输入联系电话" />
+                <Input placeholder="请输入联系电话" disabled={readOnly} />
               </Form.Item>
               <Form.Item label="联系邮箱" name="contactEmail" rules={[{ validator: validateEmail }]}>
-                <Input placeholder="请输入联系邮箱" />
+                <Input placeholder="请输入联系邮箱" disabled={readOnly} />
               </Form.Item>
             </Card>
 
@@ -137,18 +147,18 @@ export default function BasicInfoModule({
               <div className="hotel-info__rule-header">
                 <span>营业时间</span>
                 <Form.Item name={['operationRules', 'isOpen24Hours']} valuePropName="checked" noStyle>
-                  <Checkbox onChange={handleOpen24HoursChange}>24小时</Checkbox>
+                  <Checkbox disabled={readOnly} onChange={handleOpen24HoursChange}>24小时</Checkbox>
                 </Form.Item>
               </div>
               <Row gutter={10}>
                 <Col span={12}>
                   <Form.Item name={['operationRules', 'businessStartTime']}>
-                    <Input type="time" disabled={Boolean(isOpen24Hours)} />
+                    <Input type="time" disabled={readOnly || Boolean(isOpen24Hours)} />
                   </Form.Item>
                 </Col>
                 <Col span={12}>
                   <Form.Item name={['operationRules', 'businessEndTime']}>
-                    <Input type="time" disabled={Boolean(isOpen24Hours)} />
+                    <Input type="time" disabled={readOnly || Boolean(isOpen24Hours)} />
                   </Form.Item>
                 </Col>
               </Row>
@@ -158,16 +168,35 @@ export default function BasicInfoModule({
               <div className="hotel-info__rule-item">
                 <span>入住规则</span>
                 <Form.Item name={['operationRules', 'checkInTime']} style={{ marginBottom: 0 }}>
-                  <Input type="time" />
+                  <Input type="time" disabled={readOnly} />
                 </Form.Item>
               </div>
 
               <div className="hotel-info__rule-item">
                 <span>退房规则</span>
                 <Form.Item name={['operationRules', 'checkOutTime']} style={{ marginBottom: 0 }}>
-                  <Input type="time" />
+                  <Input type="time" disabled={readOnly} />
                 </Form.Item>
               </div>
+            </Card>
+
+            <Card className="hotel-info__section-card hotel-info__info-card" title="楼层信息">
+              <Form.Item
+                className="hotel-info__label-no-required-mark"
+                label="总楼层"
+                name={['floorInfo', 'totalFloorCount']}
+                rules={[{ required: true, message: '请输入总楼层。' }]}
+                extra={floorPreviewText}
+              >
+                <CompactNumberInput
+                  min={1}
+                  max={MAX_TOTAL_FLOOR_COUNT}
+                  precision={0}
+                  disabled={readOnly}
+                  placeholder="请输入总楼层"
+                  addon="层"
+                />
+              </Form.Item>
             </Card>
           </div>
         </Col>
@@ -187,7 +216,7 @@ export default function BasicInfoModule({
           <Alert
             type="warning"
             showIcon
-            message={mapUnavailableReason ? '地图不可用' : '地图加载失败'}
+            title={mapUnavailableReason ? '地图不可用' : '地图加载失败'}
             description={mapUnavailableReason || mapLoadError}
           />
         ) : (

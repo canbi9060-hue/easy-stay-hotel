@@ -1,16 +1,19 @@
 const { query } = require('../../../db/index');
 const {
   reviewStatusList,
-  reviewStatusEditableOnSaveList,
   accommodationTypeList,
   starLevelList,
   defaultCountry,
   maxHotelNameLength,
   maxAddressLength,
   maxIntroductionLength,
+  defaultTotalFloorCount,
+  maxTotalFloorCount,
+  maxReviewRemarkLength,
   timeRegex,
   phoneRegex,
   emailRegex,
+  createFloorLabels,
   defaultProfile,
 } = require('./constants');
 const {
@@ -19,20 +22,63 @@ const {
   normalizeCustomFacilities,
 } = require('./helpers');
 const { safeTrim, parseJsonArray, parseJsonObject } = require('../../utils/common');
-const { getMerchantReviewStatus } = require('./repository');
+const {
+  getHotelProfileByMerchantId,
+  getHotelFloorsByMerchantId,
+} = require('./repository');
+const {
+  getMerchantHotelDraftState,
+} = require('./draftState');
 
-const validateTime = (value, field, label) => {
+const validateTime = (value, label) => {
   const val = safeTrim(value);
   if (!val) return `${label}不能为空`;
   if (!timeRegex.test(val)) return `${label}格式应为 HH:mm`;
   return '';
 };
 
-const mapHotelProfile = (row) => {
+const normalizeCoordinateValue = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const numericValue = Number(value);
+  return Number.isNaN(numericValue) ? null : numericValue;
+};
+
+const normalizeTotalFloorCount = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue)) {
+    return defaultTotalFloorCount;
+  }
+  return Math.min(maxTotalFloorCount, Math.max(defaultTotalFloorCount, numericValue));
+};
+
+const normalizeFloorLabels = (rawFloors, totalFloorCount) => {
+  const generatedFloors = createFloorLabels(totalFloorCount);
+  if (!Array.isArray(rawFloors)) {
+    return generatedFloors;
+  }
+
+  const normalizedFloors = rawFloors
+    .filter((item) => typeof item === 'string')
+    .map((item) => safeTrim(item))
+    .filter(Boolean);
+
+  return normalizedFloors.length === totalFloorCount ? normalizedFloors : generatedFloors;
+};
+
+const mapHotelProfile = (row, floorRows = []) => {
   if (!row) return defaultProfile;
 
+  const totalFloorCount = normalizeTotalFloorCount(row.total_floor_count);
+  const floors = floorRows.length
+    ? normalizeFloorLabels(floorRows.map((item) => item.floor_label), totalFloorCount)
+    : createFloorLabels(totalFloorCount);
+
   return {
+    hasPendingDraft: false,
     reviewStatus: reviewStatusList.includes(row.review_status) ? row.review_status : 'incomplete',
+    reviewRemark: row.review_remark || '',
     accommodationType: row.accommodation_type || 'hotel',
     starLevel: row.star_level || 'three',
     hotelName: row.hotel_name || '',
@@ -59,7 +105,94 @@ const mapHotelProfile = (row) => {
       checkInTime: row.check_in_time || '14:00',
       checkOutTime: row.check_out_time || '12:00',
     },
+    floorInfo: {
+      totalFloorCount,
+      floors,
+    },
   };
+};
+
+const mapDraftHotelProfile = (payload, meta = {}, liveFloorInfo = defaultProfile.floorInfo) => {
+  const source = payload && typeof payload === 'object' && !Array.isArray(payload) ? payload : {};
+  const address = source.address && typeof source.address === 'object' && !Array.isArray(source.address)
+    ? source.address
+    : {};
+  const operationRules = source.operationRules && typeof source.operationRules === 'object' && !Array.isArray(source.operationRules)
+    ? source.operationRules
+    : {};
+  const floorInfo = source.floorInfo && typeof source.floorInfo === 'object' && !Array.isArray(source.floorInfo)
+    ? source.floorInfo
+    : {};
+  const reviewStatus = reviewStatusList.includes(meta.reviewStatus) ? meta.reviewStatus : 'incomplete';
+  const totalFloorCount = normalizeTotalFloorCount(
+    floorInfo.totalFloorCount ?? liveFloorInfo.totalFloorCount
+  );
+
+  return {
+    hasPendingDraft: Boolean(meta.hasPendingDraft),
+    reviewStatus,
+    reviewRemark: safeTrim(meta.reviewRemark).slice(0, maxReviewRemarkLength),
+    accommodationType: accommodationTypeList.includes(source.accommodationType)
+      ? source.accommodationType
+      : defaultProfile.accommodationType,
+    starLevel: starLevelList.includes(source.starLevel) ? source.starLevel : defaultProfile.starLevel,
+    hotelName: safeTrim(source.hotelName).slice(0, maxHotelNameLength),
+    isGroup: Boolean(source.isGroup),
+    address: {
+      country: safeTrim(address.country) || defaultCountry,
+      province: safeTrim(address.province),
+      city: safeTrim(address.city),
+      district: safeTrim(address.district),
+      detail: safeTrim(address.detail).slice(0, maxAddressLength),
+      latitude: normalizeCoordinateValue(address.latitude),
+      longitude: normalizeCoordinateValue(address.longitude),
+    },
+    propertyTags: normalizeTags(source.propertyTags),
+    facilitySelections: normalizeFacilitySelections(source.facilitySelections),
+    customFacilities: normalizeCustomFacilities(source.customFacilities),
+    introduction: safeTrim(source.introduction).slice(0, maxIntroductionLength),
+    contactPhone: safeTrim(source.contactPhone),
+    contactEmail: safeTrim(source.contactEmail),
+    operationRules: {
+      isOpen24Hours: Boolean(operationRules.isOpen24Hours),
+      businessStartTime: safeTrim(operationRules.businessStartTime) || defaultProfile.operationRules.businessStartTime,
+      businessEndTime: safeTrim(operationRules.businessEndTime) || defaultProfile.operationRules.businessEndTime,
+      checkInTime: safeTrim(operationRules.checkInTime) || defaultProfile.operationRules.checkInTime,
+      checkOutTime: safeTrim(operationRules.checkOutTime) || defaultProfile.operationRules.checkOutTime,
+    },
+    floorInfo: {
+      totalFloorCount,
+      floors: normalizeFloorLabels(
+        floorInfo.floors ?? liveFloorInfo.floors,
+        totalFloorCount
+      ),
+    },
+  };
+};
+
+const getMerchantHotelProfileView = async (merchantUserId, executor = null) => {
+  const hotelProfile = await getHotelProfileByMerchantId(merchantUserId, executor);
+  if (!hotelProfile) {
+    return defaultProfile;
+  }
+
+  const hotelFloors = await getHotelFloorsByMerchantId(merchantUserId, executor);
+  const liveProfile = mapHotelProfile(hotelProfile, hotelFloors);
+  const draftState = await getMerchantHotelDraftState(merchantUserId, executor, hotelProfile);
+  if (!draftState.useDraft || !draftState.profileDraftRow) {
+    return liveProfile;
+  }
+
+  const draftPayload = parseJsonObject(draftState.profileDraftRow.payload_json);
+  if (Object.keys(draftPayload).length === 0) {
+    return liveProfile;
+  }
+
+  return mapDraftHotelProfile(draftPayload, {
+    hasPendingDraft: draftState.hasProfileDraft,
+    reviewStatus: draftState.reviewStatus,
+    reviewRemark: draftState.reviewRemark,
+  }, liveProfile.floorInfo);
 };
 
 const validateHotelProfilePayload = (payload, options = {}) => {
@@ -156,10 +289,10 @@ const validateHotelProfilePayload = (payload, options = {}) => {
 
   if (!isOpen24Hours) {
     if (strictRequired) {
-      const businessStartTimeError = validateTime(businessStartTimeRaw, 'operationRules.businessStartTime', '营业开始时间');
+      const businessStartTimeError = validateTime(businessStartTimeRaw, '营业开始时间');
       if (businessStartTimeError) return { message: businessStartTimeError, field: 'operationRules.businessStartTime' };
 
-      const businessEndTimeError = validateTime(businessEndTimeRaw, 'operationRules.businessEndTime', '营业结束时间');
+      const businessEndTimeError = validateTime(businessEndTimeRaw, '营业结束时间');
       if (businessEndTimeError) return { message: businessEndTimeError, field: 'operationRules.businessEndTime' };
     } else {
       if (businessStartTimeRaw && !timeRegex.test(businessStartTimeRaw)) {
@@ -172,10 +305,10 @@ const validateHotelProfilePayload = (payload, options = {}) => {
   }
 
   if (strictRequired) {
-    const checkInTimeError = validateTime(checkInTimeRaw, 'operationRules.checkInTime', '入住时间');
+    const checkInTimeError = validateTime(checkInTimeRaw, '入住时间');
     if (checkInTimeError) return { message: checkInTimeError, field: 'operationRules.checkInTime' };
 
-    const checkOutTimeError = validateTime(checkOutTimeRaw, 'operationRules.checkOutTime', '退房时间');
+    const checkOutTimeError = validateTime(checkOutTimeRaw, '退房时间');
     if (checkOutTimeError) return { message: checkOutTimeError, field: 'operationRules.checkOutTime' };
   } else {
     if (checkInTimeRaw && !timeRegex.test(checkInTimeRaw)) {
@@ -191,6 +324,16 @@ const validateHotelProfilePayload = (payload, options = {}) => {
   const businessEndTime = isOpen24Hours ? '23:59' : (businessEndTimeRaw || operationRuleDefaults.businessEndTime);
   const checkInTime = checkInTimeRaw || operationRuleDefaults.checkInTime;
   const checkOutTime = checkOutTimeRaw || operationRuleDefaults.checkOutTime;
+  const floorInfo = payload?.floorInfo || {};
+  const totalFloorCountRaw = floorInfo.totalFloorCount;
+  const totalFloorCount = Number(totalFloorCountRaw);
+
+  if (!Number.isInteger(totalFloorCount) || totalFloorCount < defaultTotalFloorCount || totalFloorCount > maxTotalFloorCount) {
+    return {
+      message: `总楼层需为 ${defaultTotalFloorCount} 到 ${maxTotalFloorCount} 的整数`,
+      field: 'floorInfo.totalFloorCount',
+    };
+  }
 
   return {
     payload: {
@@ -212,28 +355,23 @@ const validateHotelProfilePayload = (payload, options = {}) => {
         checkInTime,
         checkOutTime,
       },
+      floorInfo: {
+        totalFloorCount,
+        floors: createFloorLabels(totalFloorCount),
+      },
     },
   };
 };
 
 const ensureMerchantHotelEditable = async (merchantUserId, executor = null) => {
-  const reviewStatus = await getMerchantReviewStatus(merchantUserId, executor);
-  if (reviewStatus === 'reviewing') {
-    return {
-      ok: false,
-      message: '酒店资料正在审核中，暂不支持编辑。',
-      field: 'reviewStatus',
-      reviewStatus,
-    };
-  }
+  const currentProfile = await getHotelProfileByMerchantId(merchantUserId, executor);
+  const reviewStatus = String(currentProfile?.review_status || '').trim();
+  const reviewRemark = safeTrim(currentProfile?.review_remark);
   return {
     ok: true,
     reviewStatus,
+    reviewRemark,
   };
-};
-
-const resolveReviewStatusAfterSave = (currentStatus = '') => {
-  return reviewStatusEditableOnSaveList.includes(currentStatus) ? currentStatus : 'incomplete';
 };
 
 const saveHotelProfile = async (merchantUserId, normalizedPayload, options = {}) => {
@@ -250,14 +388,17 @@ const saveHotelProfile = async (merchantUserId, normalizedPayload, options = {})
     contactPhone,
     contactEmail,
     operationRules,
+    floorInfo,
   } = normalizedPayload;
   const reviewStatus = reviewStatusList.includes(options.reviewStatus)
     ? options.reviewStatus
     : 'incomplete';
+  const reviewRemark = safeTrim(options.reviewRemark).slice(0, maxReviewRemarkLength);
 
   const data = {
     merchant_user_id: merchantUserId,
     review_status: reviewStatus,
+    review_remark: reviewRemark,
     accommodation_type: accommodationType,
     star_level: starLevel,
     hotel_name: hotelName,
@@ -280,6 +421,7 @@ const saveHotelProfile = async (merchantUserId, normalizedPayload, options = {})
     business_end_time: operationRules.businessEndTime,
     check_in_time: operationRules.checkInTime,
     check_out_time: operationRules.checkOutTime,
+    total_floor_count: floorInfo.totalFloorCount,
   };
 
   const keys = Object.keys(data);
@@ -303,8 +445,8 @@ const saveHotelProfile = async (merchantUserId, normalizedPayload, options = {})
 
 module.exports = {
   mapHotelProfile,
+  getMerchantHotelProfileView,
   validateHotelProfilePayload,
   ensureMerchantHotelEditable,
-  resolveReviewStatusAfterSave,
   saveHotelProfile,
 };

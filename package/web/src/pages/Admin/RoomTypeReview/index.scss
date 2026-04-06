@@ -77,6 +77,12 @@
   padding: 40px 0;
 }
 
+.admin-room-review__reason-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 @media (max-width: 768px) {
   .admin-room-review__detail-grid,
   .admin-room-review__images {

@@ -1,48 +1,41 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Form, message, Modal, Upload } from 'antd';
+import { Form, message, Upload } from 'antd';
 import {
-  createMerchantRoomTypeAPI,
   getFileUrl,
-  getRequestErrorMessage,
   getMerchantRoomTypeDetailAPI,
-  updateMerchantRoomTypeAPI,
+  getRequestErrorMessage,
 } from '../../../../utils/request';
 import {
-  buildRoomTypeDraftKey,
-  buildRoomTypeSubmitPayload,
+  buildRoomTypeFloorText,
+  createDraftImageItem,
   createExistingImageItem,
   createNewImageItem,
   emptyRoomTypeFormValues,
   getRoomTypeEditNotice,
-  hydrateImageDrafts,
+  hasHotelFloorInfo,
   maxRoomTypeImageCount,
+  normalizeHotelFloorInfo,
   normalizeRoomTypeFormValues,
+  resolveRoomTypeFacilitySelection,
+  resolveRoomTypeFloorSelection,
   revokeDraftPreviewUrls,
-  serializeImageDrafts,
+  saveMerchantRoomTypeCreateDraft,
+  saveMerchantRoomTypeEditDraft,
+  submitMerchantRoomTypeCreate,
+  submitMerchantRoomTypeEdit,
   validateRoomTypeImageFile,
+  isPendingRoomType,
 } from '../../../../utils/room-type';
 import { toUploadFileItem } from '../../../../utils/common';
 
-const createRestoreDraftPrompt = (draft) => new Promise((resolve) => {
-  let settled = false;
-  const finish = (value) => {
-    if (settled) return;
-    settled = true;
-    resolve(value);
-  };
-
-  const savedAt = draft?.savedAt ? new Date(draft.savedAt).toLocaleString() : '';
-  Modal.confirm({
-    title: '发现本地草稿',
-    content: savedAt ? `检测到 ${savedAt} 保存的草稿，是否恢复？` : '检测到未提交的本地草稿，是否恢复？',
-    okText: '恢复草稿',
-    cancelText: '丢弃草稿',
-    onOk: () => finish(true),
-    onCancel: () => finish(false),
-  });
-});
-
-export default function useRoomTypeForm({ onSuccess }) {
+export default function useRoomTypeForm({
+  hotelFloorInfo,
+  hotelFacilityOptions = [],
+  createDraft,
+  editDraftMap = {},
+  onSuccess,
+  onDraftSaved,
+}) {
   const [form] = Form.useForm();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('create');
@@ -51,6 +44,26 @@ export default function useRoomTypeForm({ onSuccess }) {
   const [submitting, setSubmitting] = useState(false);
   const [imageItems, setImageItems] = useState([]);
   const [detail, setDetail] = useState(null);
+  const [floorSelectionIssue, setFloorSelectionIssue] = useState(null);
+  const [facilityTagIssue, setFacilityTagIssue] = useState(null);
+  const floorStart = Form.useWatch('floorStart', form);
+  const floorEnd = Form.useWatch('floorEnd', form);
+  const facilityTags = Form.useWatch('facilityTags', form);
+  const normalizedHotelFloorInfo = useMemo(() => normalizeHotelFloorInfo(hotelFloorInfo), [hotelFloorInfo]);
+  const normalizedHotelFacilityOptions = useMemo(() => {
+    const seen = new Set();
+    return Array.isArray(hotelFacilityOptions)
+      ? hotelFacilityOptions.reduce((acc, item) => {
+        const label = String(item?.label || item?.value || '').trim();
+        if (!label || seen.has(label)) {
+          return acc;
+        }
+        seen.add(label);
+        acc.push({ label, value: label });
+        return acc;
+      }, [])
+      : [];
+  }, [hotelFacilityOptions]);
 
   const replaceImageItems = useCallback((nextItems) => {
     setImageItems((prev) => {
@@ -63,6 +76,8 @@ export default function useRoomTypeForm({ onSuccess }) {
     form.resetFields();
     setDetail(null);
     setRoomTypeId(null);
+    setFloorSelectionIssue(null);
+    setFacilityTagIssue(null);
     replaceImageItems([]);
   }, [form, replaceImageItems]);
 
@@ -73,45 +88,66 @@ export default function useRoomTypeForm({ onSuccess }) {
     resetFormState();
   }, [resetFormState]);
 
-  const draftKey = useMemo(() => buildRoomTypeDraftKey(mode, roomTypeId), [mode, roomTypeId]);
   const statusNotice = useMemo(() => getRoomTypeEditNotice(detail), [detail]);
+  const submitDisabled = mode === 'edit' && isPendingRoomType(detail);
+  const editLocked = mode === 'edit' && isPendingRoomType(detail);
   const imageFileList = useMemo(
     () => imageItems.map((item) => toUploadFileItem(item, 'image.png')),
     [imageItems]
   );
 
-  const maybeRestoreDraft = useCallback(async (baseValues, baseImages, currentDraftKey) => {
-    form.setFieldsValue(baseValues);
-    replaceImageItems(baseImages);
+  const applyRoomTypeValues = useCallback((sourceValues) => {
+    const normalizedValues = normalizeRoomTypeFormValues(sourceValues, normalizedHotelFloorInfo);
+    const floorSelection = resolveRoomTypeFloorSelection(normalizedValues.floorText, normalizedHotelFloorInfo);
+    const nextFacilityTagIssue = resolveRoomTypeFacilitySelection(
+      normalizedValues.facilityTags,
+      normalizedHotelFacilityOptions
+    );
 
-    const rawDraft = window.localStorage.getItem(currentDraftKey);
-    if (!rawDraft) {
+    form.setFieldsValue(normalizedValues);
+    setFloorSelectionIssue(floorSelection.isInvalid ? {
+      message: floorSelection.invalidMessage,
+      floorText: floorSelection.originalFloorText,
+    } : null);
+    setFacilityTagIssue(nextFacilityTagIssue.isInvalid ? {
+      message: nextFacilityTagIssue.invalidMessage,
+      invalidTags: nextFacilityTagIssue.invalidTags,
+    } : null);
+  }, [form, normalizedHotelFacilityOptions, normalizedHotelFloorInfo]);
+
+  useEffect(() => {
+    const nextFloorText = buildRoomTypeFloorText(floorStart, floorEnd);
+    if (nextFloorText && floorSelectionIssue) {
+      setFloorSelectionIssue(null);
+    }
+
+    const currentFloorText = String(form.getFieldValue('floorText') || '');
+    const targetFloorText = nextFloorText || (floorSelectionIssue ? currentFloorText : '');
+    if (currentFloorText !== targetFloorText) {
+      form.setFieldValue('floorText', targetFloorText);
+    }
+  }, [floorEnd, floorSelectionIssue, floorStart, form]);
+
+  useEffect(() => {
+    if (!open) {
       return;
     }
 
-    try {
-      const draft = JSON.parse(rawDraft);
-      const shouldRestore = await createRestoreDraftPrompt(draft);
-      if (!shouldRestore) {
-        window.localStorage.removeItem(currentDraftKey);
-        return;
-      }
+    const nextFacilityTagIssue = resolveRoomTypeFacilitySelection(
+      facilityTags,
+      normalizedHotelFacilityOptions
+    );
 
-      const restoredImages = await hydrateImageDrafts(Array.isArray(draft?.imageItems) ? draft.imageItems : []);
-      form.setFieldsValue({
-        ...baseValues,
-        ...(draft?.formValues || {}),
-      });
-      replaceImageItems(restoredImages);
-      message.success('已恢复本地草稿。');
-    } catch (error) {
-      window.localStorage.removeItem(currentDraftKey);
-      message.warning('本地草稿已损坏，已自动清除。');
-    }
-  }, [form, replaceImageItems]);
+    setFacilityTagIssue(nextFacilityTagIssue.isInvalid ? {
+      message: nextFacilityTagIssue.invalidMessage,
+      invalidTags: nextFacilityTagIssue.invalidTags,
+    } : null);
+  }, [facilityTags, normalizedHotelFacilityOptions, open]);
 
   useEffect(() => {
-    if (!open) return undefined;
+    if (!open) {
+      return undefined;
+    }
 
     let active = true;
 
@@ -120,19 +156,33 @@ export default function useRoomTypeForm({ onSuccess }) {
         setLoading(true);
         if (mode === 'edit' && roomTypeId) {
           const res = await getMerchantRoomTypeDetailAPI(roomTypeId);
-          if (!active) return;
+          if (!active) {
+            return;
+          }
+
           const nextDetail = res.data;
-          const baseValues = normalizeRoomTypeFormValues(nextDetail);
-          const baseImages = nextDetail.images.map((image) => createExistingImageItem(image, getFileUrl));
+          const draft = editDraftMap[Number(roomTypeId)] || null;
+          const sourceValues = draft?.formValues || nextDetail;
+          const sourceImages = draft?.images?.length
+            ? draft.images.map((image) => createDraftImageItem(image, getFileUrl))
+            : nextDetail.images.map((image) => createExistingImageItem(image, getFileUrl));
+
           setDetail(nextDetail);
-          await maybeRestoreDraft(baseValues, baseImages, buildRoomTypeDraftKey('edit', roomTypeId));
+          applyRoomTypeValues(sourceValues);
+          replaceImageItems(sourceImages);
           return;
         }
 
         setDetail(null);
-        await maybeRestoreDraft(emptyRoomTypeFormValues, [], buildRoomTypeDraftKey('create'));
+        const nextCreateDraft = createDraft || null;
+        applyRoomTypeValues(nextCreateDraft?.formValues || emptyRoomTypeFormValues);
+        replaceImageItems(nextCreateDraft?.images?.length
+          ? nextCreateDraft.images.map((image) => createDraftImageItem(image, getFileUrl))
+          : []);
       } catch (error) {
-        if (!active) return;
+        if (!active) {
+          return;
+        }
         message.error(getRequestErrorMessage(error, '加载房型信息失败。'));
         setOpen(false);
         resetFormState();
@@ -146,15 +196,33 @@ export default function useRoomTypeForm({ onSuccess }) {
     return () => {
       active = false;
     };
-  }, [open, mode, roomTypeId, maybeRestoreDraft, resetFormState]);
+  }, [applyRoomTypeValues, createDraft, editDraftMap, mode, open, replaceImageItems, resetFormState, roomTypeId]);
 
-  const openCreateModal = useCallback(() => {
+  const openCreateModal = useCallback((options = {}) => {
+    if (options.canCreate === false) {
+      message.warning(options.disabledReason || '酒店信息审核通过后才能添加房型');
+      return;
+    }
+    if (createDraft) {
+      message.warning('已存在 1 个新增房型草稿，请先完善并提交审核后再新建。');
+      return;
+    }
     setMode('create');
     setRoomTypeId(null);
     setOpen(true);
-  }, []);
+  }, [createDraft]);
 
   const openEditModal = useCallback((record) => {
+    if (record?.isCreateDraft) {
+      setMode('create');
+      setRoomTypeId(null);
+      setOpen(true);
+      return;
+    }
+    if (isPendingRoomType(record)) {
+      message.warning('房型正在审核中，暂不允许编辑。');
+      return;
+    }
     setMode('edit');
     setRoomTypeId(record?.id || null);
     setOpen(true);
@@ -191,44 +259,78 @@ export default function useRoomTypeForm({ onSuccess }) {
   }, []);
 
   const handleSaveDraft = useCallback(async () => {
+    if (editLocked) {
+      message.warning('房型正在审核中，暂不允许保存草稿。');
+      return;
+    }
+
     try {
       const values = {
         ...emptyRoomTypeFormValues,
         ...form.getFieldsValue(true),
       };
-      const serializedImages = await serializeImageDrafts(imageItems);
-      window.localStorage.setItem(draftKey, JSON.stringify({
-        formValues: values,
-        imageItems: serializedImages,
-        savedAt: Date.now(),
-      }));
-      message.success('草稿已保存到本地。');
+      if (mode === 'edit' && roomTypeId) {
+        await saveMerchantRoomTypeEditDraft(roomTypeId, values, imageItems);
+      } else {
+        await saveMerchantRoomTypeCreateDraft(values, imageItems);
+      }
+
+      if (typeof onDraftSaved === 'function') {
+        onDraftSaved();
+      }
+      message.success('草稿已保存。');
     } catch (error) {
-      message.error('保存草稿失败，请稍后重试。');
+      message.error(getRequestErrorMessage(error, '保存草稿失败，请稍后重试。'));
     }
-  }, [draftKey, form, imageItems]);
+  }, [editLocked, form, imageItems, mode, onDraftSaved, roomTypeId]);
+
+  const handleFloorStartChange = useCallback((value) => {
+    const nextFloorStart = value ?? null;
+    form.setFieldValue('floorStart', nextFloorStart);
+    const currentFloorEnd = Number(form.getFieldValue('floorEnd'));
+    if (Number.isInteger(nextFloorStart) && Number.isInteger(currentFloorEnd) && currentFloorEnd < nextFloorStart) {
+      form.setFieldValue('floorEnd', null);
+    }
+  }, [form]);
 
   const handleSubmit = useCallback(async () => {
     try {
+      if (submitDisabled) {
+        message.warning('房型正在审核中，暂不允许提交新的修改。');
+        return;
+      }
+      if (!hasHotelFloorInfo(normalizedHotelFloorInfo)) {
+        message.error('请先在酒店资料中完善总楼层。');
+        return;
+      }
+      if (!normalizedHotelFacilityOptions.length) {
+        message.error('请先在酒店信息页勾选或添加设施。');
+        return;
+      }
+      if (floorSelectionIssue) {
+        message.error(floorSelectionIssue.message);
+        return;
+      }
+      if (facilityTagIssue) {
+        message.error(facilityTagIssue.message);
+        return;
+      }
+
       const values = await form.validateFields();
+      if (!Number.isInteger(Number(values.floorStart)) || !Number.isInteger(Number(values.floorEnd))) {
+        message.error('请选择合法的楼层区间。');
+        return;
+      }
       if (!imageItems.length) {
         message.error('请至少上传 1 张房型图片。');
         return;
       }
 
       setSubmitting(true);
-      const { payload, files } = buildRoomTypeSubmitPayload(values, imageItems);
-      const formData = new FormData();
-      formData.append('payload', JSON.stringify(payload));
-      files.forEach((file) => {
-        formData.append('images', file);
-      });
-
       const response = mode === 'edit' && roomTypeId
-        ? await updateMerchantRoomTypeAPI(roomTypeId, formData)
-        : await createMerchantRoomTypeAPI(formData);
+        ? await submitMerchantRoomTypeEdit(roomTypeId, values, imageItems)
+        : await submitMerchantRoomTypeCreate(values, imageItems);
 
-      window.localStorage.removeItem(draftKey);
       message.success(mode === 'edit' ? '房型修改已提交审核。' : '房型已提交审核。');
       closeFormModal();
       if (typeof onSuccess === 'function') {
@@ -242,7 +344,19 @@ export default function useRoomTypeForm({ onSuccess }) {
     } finally {
       setSubmitting(false);
     }
-  }, [closeFormModal, draftKey, form, imageItems, mode, onSuccess, roomTypeId]);
+  }, [
+    closeFormModal,
+    facilityTagIssue,
+    floorSelectionIssue,
+    form,
+    imageItems,
+    mode,
+    normalizedHotelFacilityOptions.length,
+    normalizedHotelFloorInfo,
+    onSuccess,
+    roomTypeId,
+    submitDisabled,
+  ]);
 
   return {
     form,
@@ -253,12 +367,19 @@ export default function useRoomTypeForm({ onSuccess }) {
       submitting,
       imageFileList,
       statusNotice,
+      editLocked,
+      submitDisabled,
+      hotelFloorInfo: normalizedHotelFloorInfo,
+      floorSelectionIssue,
+      hotelFacilityOptions: normalizedHotelFacilityOptions,
+      facilityTagIssue,
     },
     formActions: {
       openCreateModal,
       openEditModal,
       closeFormModal,
       handleBeforeUpload,
+      handleFloorStartChange,
       removeImage,
       handleSaveDraft,
       handleSubmit,

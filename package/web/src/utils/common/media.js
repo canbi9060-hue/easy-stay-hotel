@@ -145,3 +145,16 @@ export const buildGroupedMediaSubmitPayload = (groupedItems, groups = []) => {
     files,
   };
 };
+
+export const createMultipartFormData = (payload, fileFields = {}) => {
+  const formData = new FormData();
+  formData.append('payload', JSON.stringify(payload));
+
+  Object.entries(fileFields).forEach(([fieldName, files]) => {
+    (Array.isArray(files) ? files : []).forEach((file) => {
+      formData.append(fieldName, file);
+    });
+  });
+
+  return formData;
+};

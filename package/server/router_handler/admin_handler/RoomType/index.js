@@ -12,6 +12,11 @@ const {
 const { createHandlerError, safeTrim } = require('../../utils/common');
 const { parsePageParams, normalizeOptionalEnum } = require('../../utils/query');
 
+const roomTypeSaleControlActions = {
+  forceOff: 'force_off',
+  restoreOn: 'restore_on',
+};
+
 exports.getAdminRoomTypes = async (req, res) => {
   try {
     const auditStatus = normalizeOptionalEnum(req.query.auditStatus, auditStatusList);
@@ -99,8 +104,11 @@ exports.auditAdminRoomType = async (req, res) => {
          SET audit_status = ?,
              audit_remark = ?,
              is_on_sale = 0,
+             is_forced_off_sale = 0,
              audit_admin_id = ?,
-             audit_at = NOW()
+             forced_off_admin_id = NULL,
+             audit_at = NOW(),
+             forced_off_at = NULL
          WHERE id = ?`,
         [
           auditStatus,
@@ -125,5 +133,76 @@ exports.auditAdminRoomType = async (req, res) => {
     }
     console.error('管理员审核房型失败:', error);
     res.json(serverFail('审核房型失败，请稍后重试'));
+  }
+};
+
+exports.controlAdminRoomTypeSale = async (req, res) => {
+  try {
+    const roomTypeId = Number(req.params.id);
+    if (!Number.isInteger(roomTypeId) || roomTypeId <= 0) {
+      return res.json(validationFail('房型 ID 不合法', 'id'));
+    }
+
+    const action = safeTrim(req.body?.action);
+    if (![roomTypeSaleControlActions.forceOff, roomTypeSaleControlActions.restoreOn].includes(action)) {
+      return res.json(validationFail('售卖控制动作不合法', 'action'));
+    }
+
+    const result = await withTransaction(async (tx) => {
+      const row = await getAdminRoomTypeRowById(roomTypeId, tx, { forUpdate: true });
+      if (!row) {
+        throw createHandlerError('notFound', '房型不存在', 'id');
+      }
+      if (Number(row.audit_status) !== roomTypeAuditStatus.approved) {
+        throw createHandlerError('validation', '仅审核通过的房型可执行售卖控制', 'auditStatus');
+      }
+
+      if (action === roomTypeSaleControlActions.forceOff) {
+        if (Number(row.is_on_sale) !== 1 || Number(row.is_forced_off_sale) === 1) {
+          throw createHandlerError('validation', '当前房型不可强行下架', 'action');
+        }
+
+        await runQuery(
+          tx,
+          `UPDATE merchant_room_types
+           SET is_on_sale = 0,
+               is_forced_off_sale = 1,
+               forced_off_admin_id = ?,
+               forced_off_at = NOW()
+           WHERE id = ?`,
+          [req.user.id, roomTypeId]
+        );
+      } else {
+        if (Number(row.is_forced_off_sale) !== 1) {
+          throw createHandlerError('validation', '当前房型不可恢复上架', 'action');
+        }
+
+        await runQuery(
+          tx,
+          `UPDATE merchant_room_types
+           SET is_on_sale = 1,
+               is_forced_off_sale = 0,
+               forced_off_admin_id = NULL,
+               forced_off_at = NULL
+           WHERE id = ?`,
+          [roomTypeId]
+        );
+      }
+
+      const latestRow = await getAdminRoomTypeRowById(roomTypeId, tx);
+      const imageRows = await getRoomTypeImagesByRoomTypeId(roomTypeId, tx);
+      return mapRoomTypeDetail(latestRow, imageRows);
+    });
+
+    res.json(success(result, action === roomTypeSaleControlActions.forceOff ? '房型已强行下架' : '房型已恢复上架'));
+  } catch (error) {
+    if (error.kind === 'validation') {
+      return res.json(validationFail(error.message, error.field || 'action'));
+    }
+    if (error.kind === 'notFound') {
+      return res.json(notFoundFail(error.message, error.field || 'id'));
+    }
+    console.error('管理员控制房型售卖状态失败:', error);
+    res.json(serverFail('控制房型售卖状态失败，请稍后重试'));
   }
 };

@@ -1,25 +1,34 @@
 import React from 'react';
-import { Descriptions, Drawer, Empty, Image, Space, Spin, Tag } from 'antd';
+import { Alert, Descriptions, Drawer, Empty, Image, Space, Spin, Tag } from 'antd';
 import { formatPrice, getAuditStatusMeta, getSaleStatusMeta } from '../../../../utils/room-type';
 import { getFileUrl } from '../../../../utils/request';
 
 export default function RoomTypeDetailDrawer({ open, loading, roomType, onClose }) {
   const auditMeta = getAuditStatusMeta(roomType?.auditStatus);
-  const saleMeta = getSaleStatusMeta(roomType?.isOnSale);
+  const saleMeta = getSaleStatusMeta(roomType?.isOnSale, roomType?.isForcedOffSale);
+  const roomTypeIdText = roomType?.isCreateDraft ? '草稿' : roomType?.id;
 
   return (
-    <Drawer title="房型详情" width={720} open={open} onClose={onClose} destroyOnClose>
+    <Drawer title="房型详情" size={720} open={open} onClose={onClose} destroyOnHidden>
       <Spin spinning={loading}>
         {!roomType ? <Empty description="暂无房型数据" /> : (
           <Space direction="vertical" size={20} style={{ width: '100%' }}>
+            {roomType.hasDraft ? (
+              <Alert
+                type="warning"
+                showIcon
+                title="您有未提交的草稿，当前展示为修改后内容，提交审核通过后才会正式生效。"
+              />
+            ) : null}
             <Space wrap>
+              {roomType.hasDraft ? <Tag color="orange">草稿中</Tag> : null}
               <Tag color={auditMeta.color}>{auditMeta.text}</Tag>
               <Tag color={saleMeta.color}>{saleMeta.text}</Tag>
             </Space>
 
             <Descriptions column={2} bordered>
               <Descriptions.Item label="房型名称">{roomType.roomName}</Descriptions.Item>
-              <Descriptions.Item label="房型 ID">{roomType.id}</Descriptions.Item>
+              <Descriptions.Item label="房型 ID">{roomTypeIdText}</Descriptions.Item>
               <Descriptions.Item label="床型配置">{roomType.bedConfig}</Descriptions.Item>
               <Descriptions.Item label="房间面积">{roomType.areaSize} ㎡</Descriptions.Item>
               <Descriptions.Item label="楼层说明">{roomType.floorText}</Descriptions.Item>
@@ -40,7 +49,7 @@ export default function RoomTypeDetailDrawer({ open, loading, roomType, onClose 
                     {roomType.images.map((image) => (
                       <Image
                         key={image.id}
-                        src={getFileUrl(image.filePath)}
+                        src={image.previewUrl || getFileUrl(image.filePath)}
                         alt={image.fileName || roomType.roomName}
                         className="room-type__drawer-image"
                       />

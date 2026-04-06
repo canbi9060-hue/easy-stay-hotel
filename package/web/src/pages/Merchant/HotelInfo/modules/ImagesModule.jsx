@@ -50,7 +50,7 @@ export default function ImagesModule({
           <Alert
             type="warning"
             showIcon
-            message={imageLoadError}
+            title={imageLoadError}
             action={(
               <Button type="link" size="small" onClick={onRetryLoadImages}>
                 重试

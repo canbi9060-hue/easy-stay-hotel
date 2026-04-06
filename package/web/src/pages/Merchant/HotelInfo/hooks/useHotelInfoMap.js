@@ -82,7 +82,6 @@ const createRestoreAddressDraftPrompt = (draft) => new Promise((resolve) => {
 export default function useHotelInfoMap({
   form,
   activeTab,
-  isReviewing,
   loading,
   getErrorMessage,
 }) {
@@ -295,7 +294,6 @@ export default function useHotelInfoMap({
   }, [form, getErrorMessage, mapReady]);
 
   const applyPointSelection = useCallback(async (coordinates) => {
-    if (isReviewing) return;
     hasManualSelectionRef.current = true;
     const requestId = ++pointPickRequestIdRef.current;
     setPointPickError('');
@@ -341,7 +339,7 @@ export default function useHotelInfoMap({
     } finally {
       if (requestId === pointPickRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 800);
     }
-  }, [form, getErrorMessage, isReviewing, syncRegionOptionsFromAddress]);
+  }, [form, getErrorMessage, syncRegionOptionsFromAddress]);
 
   const resetMapObjects = useCallback(() => {
     destroyMapInstance(previewBindings);
@@ -388,7 +386,7 @@ export default function useHotelInfoMap({
   );
 
   useEffect(() => {
-    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current || isReviewing) return;
+    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current) return;
     ipLocateTriedRef.current = true;
 
     prefillAddressByIP(form.getFieldValue(['address']) || emptyHotelProfile.address, amapWebKey)
@@ -425,7 +423,7 @@ export default function useHotelInfoMap({
       .finally(() => {
         window.setTimeout(() => setMapStatusText(''), 800);
       });
-  }, [form, hasUsableUserLocation, isReviewing, loading, mapReady, syncRegionOptionsFromAddress]);
+  }, [form, hasUsableUserLocation, loading, mapReady, syncRegionOptionsFromAddress]);
 
   useEffect(() => {
     if (activeTab !== 'basic') {
@@ -563,10 +561,9 @@ export default function useHotelInfoMap({
   }, []);
 
   const handleSaveAddressDraft = useCallback(() => {
-    if (isReviewing) return;
     const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
     saveAddressDraftToSession(latestAddress, { silent: false, mode: 'manual' });
-  }, [form, isReviewing, saveAddressDraftToSession]);
+  }, [form, saveAddressDraftToSession]);
 
   const onMapModalAfterOpenChange = useCallback((open) => {
     if (!open) destroyMapInstance(modalBindings);

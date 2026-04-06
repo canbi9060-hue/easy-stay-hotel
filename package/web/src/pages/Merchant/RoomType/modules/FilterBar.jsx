@@ -1,5 +1,5 @@
 import React from 'react';
-import { AutoComplete, Button, Input, Segmented } from 'antd';
+import { AutoComplete, Button, Input, Segmented, Tooltip } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import {
   getAuditStatusMeta,
@@ -23,14 +23,27 @@ export default function FilterBar({
   onSelectSuggestion,
   onAuditChange,
   onSaleChange,
+  canCreate,
+  createLoading,
+  createDisabledReason,
   onCreate,
   onBatchUp,
   onBatchDown,
 }) {
   const saleDisabled = filters.auditStatus === 'pending' || filters.auditStatus === 'rejected';
+  const createButton = (
+    <Button
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={onCreate}
+      disabled={!canCreate || createLoading}
+    >
+      添加房型
+    </Button>
+  );
   const autoCompleteOptions = searchOptions.map((option) => {
     const auditMeta = getAuditStatusMeta(option.auditStatus);
-    const saleMeta = getSaleStatusMeta(option.isOnSale);
+    const saleMeta = getSaleStatusMeta(option.isOnSale, option.isForcedOffSale);
 
     return {
       ...option,
@@ -104,7 +117,11 @@ export default function FilterBar({
               批量下架
             </Button>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={onCreate}>添加房型</Button>
+          {!canCreate && createDisabledReason ? (
+            <Tooltip title={createDisabledReason}>
+              <span>{createButton}</span>
+            </Tooltip>
+          ) : createButton}
         </div>
       </div>
     </div>

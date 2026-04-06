@@ -81,7 +81,7 @@ export default function CertificatesModule({
           <Alert
             type="warning"
             showIcon
-            message={certificateLoadError}
+            title={certificateLoadError}
             action={(
               <Button type="link" size="small" onClick={onRetryLoadCertificates}>
                 重试

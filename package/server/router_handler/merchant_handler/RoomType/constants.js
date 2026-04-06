@@ -17,7 +17,7 @@ const maxBedConfigLength = 100;
 const maxFloorTextLength = 60;
 const maxDescriptionLength = 2000;
 const maxFacilityTagCount = 20;
-const maxFacilityTagLength = 20;
+const maxFacilityTagLength = 30;
 const maxRoomTypeImageCount = 12;
 
 module.exports = {

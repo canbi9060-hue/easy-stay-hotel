@@ -19,12 +19,18 @@ const {
   runQuery,
   getHotelImagesByMerchantId,
   getHotelCertificatesByMerchantId,
+  getHotelImageDraftsByMerchantId,
+  getHotelCertificateDraftsByMerchantId,
 } = require('./repository');
+const { shouldUseHotelProfileDraft } = require('./draftState');
 
-const buildMediaTableConfig = (type) => {
+const buildMediaTableConfig = (type, scope = 'live') => {
+  const isDraft = scope === 'draft';
   if (type === 'image') {
     return {
-      tableName: 'merchant_hotel_images',
+      tableName: isDraft ? 'merchant_hotel_image_drafts' : 'merchant_hotel_images',
+      draftTableName: 'merchant_hotel_image_drafts',
+      liveTableName: 'merchant_hotel_images',
       groupColumn: 'image_group',
       groupList: hotelImageGroupList,
       groupLimits: hotelImageGroupLimits,
@@ -36,7 +42,9 @@ const buildMediaTableConfig = (type) => {
   }
 
   return {
-    tableName: 'merchant_hotel_certificates',
+    tableName: isDraft ? 'merchant_hotel_certificate_drafts' : 'merchant_hotel_certificates',
+    draftTableName: 'merchant_hotel_certificate_drafts',
+    liveTableName: 'merchant_hotel_certificates',
     groupColumn: 'cert_group',
     groupList: hotelCertificateGroupList,
     groupLimits: hotelCertificateGroupLimits,
@@ -45,6 +53,18 @@ const buildMediaTableConfig = (type) => {
     mediaField: 'hotelCertificatePlan',
     newFileLabel: '资质证件',
   };
+};
+
+const getScopedMediaRowsByMerchantId = async ({ merchantUserId, type, scope = 'live', executor = null }) => {
+  if (type === 'image') {
+    return scope === 'draft'
+      ? getHotelImageDraftsByMerchantId(merchantUserId, '', executor)
+      : getHotelImagesByMerchantId(merchantUserId, '', executor);
+  }
+
+  return scope === 'draft'
+    ? getHotelCertificateDraftsByMerchantId(merchantUserId, '', executor)
+    : getHotelCertificatesByMerchantId(merchantUserId, '', executor);
 };
 
 const normalizeGroupedPlan = (rawPlan, config) => {
@@ -75,9 +95,9 @@ const normalizeGroupedPlan = (rawPlan, config) => {
   return normalizedPlan;
 };
 
-const collectPlanUsage = ({ normalizedPlan, files, existingRows, config }) => {
-  const rowMap = new Map(existingRows.map((row) => [Number(row.id), row]));
-  const keepExistingIds = new Set();
+const collectPlanUsage = ({ normalizedPlan, files, sourceRows, config }) => {
+  const sourceRowMap = new Map(sourceRows.map((row) => [Number(row.id), row]));
+  const usedExistingIds = new Set();
   const usedNewIndexes = new Set();
 
   config.groupList.forEach((groupKey) => {
@@ -86,17 +106,17 @@ const collectPlanUsage = ({ normalizedPlan, files, existingRows, config }) => {
     tokens.forEach((token) => {
       if (token.startsWith('existing:')) {
         const mediaId = Number(token.replace('existing:', ''));
-        const row = rowMap.get(mediaId);
+        const row = sourceRowMap.get(mediaId);
         if (!Number.isInteger(mediaId) || !row) {
           throw createHandlerError('validation', `${config.groupLabels[groupKey]}包含无效的历史媒体`, config.mediaField);
         }
         if (String(row[config.groupColumn]) !== groupKey) {
           throw createHandlerError('validation', `${config.groupLabels[groupKey]}包含跨分组媒体`, config.mediaField);
         }
-        if (keepExistingIds.has(mediaId)) {
+        if (usedExistingIds.has(mediaId)) {
           throw createHandlerError('validation', `${config.groupLabels[groupKey]}包含重复的历史媒体`, config.mediaField);
         }
-        keepExistingIds.add(mediaId);
+        usedExistingIds.add(mediaId);
         return;
       }
 
@@ -120,55 +140,89 @@ const collectPlanUsage = ({ normalizedPlan, files, existingRows, config }) => {
     throw createHandlerError('validation', `存在未参与保存的${config.newFileLabel}`, config.mediaField);
   }
 
-  return {
-    keepExistingIds,
-    usedNewIndexes,
-  };
+  return { sourceRowMap };
 };
 
-const syncGroupedMediaByMerchantId = async ({ tx, merchantUserId, rawPlan, files = [], type }) => {
-  const config = buildMediaTableConfig(type);
-  const normalizedPlan = normalizeGroupedPlan(rawPlan, config);
-  const existingRows = await runQuery(
-    tx,
-    `SELECT * FROM ${config.tableName}
-     WHERE merchant_user_id = ?
-     ORDER BY ${config.groupColumn} ASC, id ASC
-     FOR UPDATE`,
-    [merchantUserId]
-  );
-  const { keepExistingIds } = collectPlanUsage({
-    normalizedPlan,
-    files,
-    existingRows,
-    config,
+const deleteScopedMediaRowsByMerchantId = async ({ tx, merchantUserId, type, scope = 'live' }) => {
+  const config = buildMediaTableConfig(type, scope);
+  const rows = await getScopedMediaRowsByMerchantId({
+    merchantUserId,
+    type,
+    scope,
+    executor: tx,
   });
 
-  const removedRows = existingRows.filter((row) => !keepExistingIds.has(Number(row.id)));
-  if (removedRows.length) {
-    const placeholders = removedRows.map(() => '?').join(', ');
+  if (rows.length) {
     await runQuery(
       tx,
-      `DELETE FROM ${config.tableName}
-       WHERE merchant_user_id = ? AND id IN (${placeholders})`,
-      [merchantUserId, ...removedRows.map((row) => row.id)]
+      `DELETE FROM ${config.tableName} WHERE merchant_user_id = ?`,
+      [merchantUserId]
     );
   }
 
-  for (const groupKey of config.groupList) {
+  return rows;
+};
+
+const replaceGroupedMediaByMerchantId = async ({
+  tx,
+  merchantUserId,
+  rawPlan,
+  files = [],
+  type,
+  sourceScope = 'live',
+  targetScope = 'live',
+}) => {
+  const targetConfig = buildMediaTableConfig(type, targetScope);
+  const normalizedPlan = normalizeGroupedPlan(rawPlan, targetConfig);
+  const sourceRows = await getScopedMediaRowsByMerchantId({
+    merchantUserId,
+    type,
+    scope: sourceScope,
+    executor: tx,
+  });
+  const { sourceRowMap } = collectPlanUsage({
+    normalizedPlan,
+    files,
+    sourceRows,
+    config: targetConfig,
+  });
+  const removedRows = await deleteScopedMediaRowsByMerchantId({
+    tx,
+    merchantUserId,
+    type,
+    scope: targetScope,
+  });
+
+  for (const groupKey of targetConfig.groupList) {
     const tokens = normalizedPlan[groupKey] || [];
+
     for (const token of tokens) {
-      if (!token.startsWith('new:')) {
+      if (token.startsWith('existing:')) {
+        const sourceRow = sourceRowMap.get(Number(token.replace('existing:', '')));
+        await runQuery(
+          tx,
+          `INSERT INTO ${targetConfig.tableName}
+            (merchant_user_id, ${targetConfig.groupColumn}, file_path, file_name, mime_type, size_bytes)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            merchantUserId,
+            groupKey,
+            sourceRow.file_path,
+            sourceRow.file_name || '',
+            sourceRow.mime_type || '',
+            Number(sourceRow.size_bytes) || 0,
+          ]
+        );
         continue;
       }
 
       const fileIndex = Number(token.replace('new:', ''));
       const file = files[fileIndex];
-      const filePath = `${config.filePathPrefix}${file.filename}`;
+      const filePath = `${targetConfig.filePathPrefix}${file.filename}`;
       await runQuery(
         tx,
-        `INSERT INTO ${config.tableName}
-          (merchant_user_id, ${config.groupColumn}, file_path, file_name, mime_type, size_bytes)
+        `INSERT INTO ${targetConfig.tableName}
+          (merchant_user_id, ${targetConfig.groupColumn}, file_path, file_name, mime_type, size_bytes)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           merchantUserId,
@@ -185,32 +239,95 @@ const syncGroupedMediaByMerchantId = async ({ tx, merchantUserId, rawPlan, files
   return removedRows.map((row) => row.file_path);
 };
 
-const getGroupedHotelImages = async (merchantUserId) => {
-  const rows = await getHotelImagesByMerchantId(merchantUserId);
+const clearGroupedMediaDraftsByMerchantId = async ({ tx, merchantUserId, type }) => {
+  const removedRows = await deleteScopedMediaRowsByMerchantId({
+    tx,
+    merchantUserId,
+    type,
+    scope: 'draft',
+  });
+  return removedRows.map((row) => row.file_path);
+};
+
+const getGroupedHotelImages = async (merchantUserId, options = {}) => {
+  const useDraft = options.scope
+    ? options.scope === 'draft'
+    : (shouldUseHotelProfileDraft(options.reviewStatus) && Boolean(options.hasProfileDraft));
+  const rows = await getScopedMediaRowsByMerchantId({
+    merchantUserId,
+    type: 'image',
+    scope: useDraft ? 'draft' : 'live',
+    executor: options.executor || null,
+  });
   return groupHotelImages(rows);
 };
 
-const getGroupedHotelCertificates = async (merchantUserId) => {
-  const rows = await getHotelCertificatesByMerchantId(merchantUserId);
+const getGroupedHotelCertificates = async (merchantUserId, options = {}) => {
+  const useDraft = options.scope
+    ? options.scope === 'draft'
+    : (shouldUseHotelProfileDraft(options.reviewStatus) && Boolean(options.hasProfileDraft));
+  const rows = await getScopedMediaRowsByMerchantId({
+    merchantUserId,
+    type: 'certificate',
+    scope: useDraft ? 'draft' : 'live',
+    executor: options.executor || null,
+  });
   return groupHotelCertificates(rows);
 };
 
-const deleteRemovedHotelImageFiles = (filePaths = []) => {
-  filePaths.forEach((filePath) => {
-    const fileResult = deleteLocalHotelImageSafely(filePath);
+const getReferencedMediaFilePaths = async ({ filePaths = [], type }) => {
+  const uniquePaths = [...new Set(filePaths.filter(Boolean))];
+  if (!uniquePaths.length) {
+    return new Set();
+  }
+
+  const config = buildMediaTableConfig(type, 'live');
+  const placeholders = uniquePaths.map(() => '?').join(', ');
+  const rows = await runQuery(
+    null,
+    `SELECT DISTINCT file_path
+     FROM ${config.liveTableName}
+     WHERE file_path IN (${placeholders})
+     UNION
+     SELECT DISTINCT file_path
+     FROM ${config.draftTableName}
+     WHERE file_path IN (${placeholders})`,
+    [...uniquePaths, ...uniquePaths]
+  );
+
+  return new Set(rows.map((row) => row.file_path));
+};
+
+const deleteRemovedHotelMediaFiles = async ({ filePaths = [], type }) => {
+  const uniquePaths = [...new Set(filePaths.filter(Boolean))];
+  if (!uniquePaths.length) {
+    return;
+  }
+
+  const referencedFilePaths = await getReferencedMediaFilePaths({ filePaths: uniquePaths, type });
+  const deleteFileSafely = type === 'image'
+    ? deleteLocalHotelImageSafely
+    : deleteLocalHotelCertificateSafely;
+  const logLabel = type === 'image' ? '删除旧酒店图片失败:' : '删除旧资质证件失败:';
+
+  uniquePaths.forEach((filePath) => {
+    if (referencedFilePaths.has(filePath)) {
+      return;
+    }
+
+    const fileResult = deleteFileSafely(filePath);
     if (!fileResult.ok && !fileResult.missing) {
-      console.warn('删除旧酒店图片失败:', { filePath, reason: fileResult.message });
+      console.warn(logLabel, { filePath, reason: fileResult.message });
     }
   });
 };
 
-const deleteRemovedHotelCertificateFiles = (filePaths = []) => {
-  filePaths.forEach((filePath) => {
-    const fileResult = deleteLocalHotelCertificateSafely(filePath);
-    if (!fileResult.ok && !fileResult.missing) {
-      console.warn('删除旧资质证件失败:', { filePath, reason: fileResult.message });
-    }
-  });
+const deleteRemovedHotelImageFiles = async (filePaths = []) => {
+  await deleteRemovedHotelMediaFiles({ filePaths, type: 'image' });
+};
+
+const deleteRemovedHotelCertificateFiles = async (filePaths = []) => {
+  await deleteRemovedHotelMediaFiles({ filePaths, type: 'certificate' });
 };
 
 const validateReviewRequiredImages = async (merchantUserId, executor = null) => {
@@ -287,7 +404,8 @@ const validateReviewRequiredMedia = async (merchantUserId, executor = null) => {
 module.exports = {
   getGroupedHotelImages,
   getGroupedHotelCertificates,
-  syncGroupedMediaByMerchantId,
+  replaceGroupedMediaByMerchantId,
+  clearGroupedMediaDraftsByMerchantId,
   deleteRemovedHotelImageFiles,
   deleteRemovedHotelCertificateFiles,
   validateReviewRequiredImages,

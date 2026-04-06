@@ -2,7 +2,7 @@ const {
   maxFacilityTagCount,
   maxFacilityTagLength,
 } = require('./constants');
-const { safeTrim, parseJsonArray } = require('../../utils/common');
+const { safeTrim, parseJsonArray, parseJsonObject } = require('../../utils/common');
 const { deleteLocalUploadSafely } = require('../../utils/files');
 
 const normalizeFacilityTags = (value) => {
@@ -37,11 +37,44 @@ const toPriceCents = (value) => {
   return Math.round(num * 100);
 };
 
+const parseRoomTypeFloorText = (value) => {
+  const floorText = safeTrim(value);
+  if (!floorText) {
+    return null;
+  }
+
+  const match = floorText.match(/^(\d+)(?:-(\d+))?层$/);
+  if (!match) {
+    return null;
+  }
+
+  const floorStart = Number(match[1]);
+  const floorEnd = Number(match[2] || match[1]);
+  if (!Number.isInteger(floorStart) || !Number.isInteger(floorEnd) || floorStart <= 0 || floorEnd < floorStart) {
+    return null;
+  }
+
+  return {
+    floorStart,
+    floorEnd,
+    floorText: floorStart === floorEnd ? `${floorStart}层` : `${floorStart}-${floorEnd}层`,
+  };
+};
+
 const deleteLocalRoomTypeImageSafely = (filePath) => {
   return deleteLocalUploadSafely(filePath, '/uploads/room-type-images/');
 };
 
 const mapRoomTypeImage = (row) => ({
+  id: Number(row.id),
+  filePath: row.file_path,
+  fileName: row.file_name || '',
+  mimeType: row.mime_type || '',
+  sizeBytes: Number(row.size_bytes) || 0,
+  createdAt: row.created_at,
+});
+
+const mapRoomTypeDraftImage = (row) => ({
   id: Number(row.id),
   filePath: row.file_path,
   fileName: row.file_name || '',
@@ -67,6 +100,7 @@ const mapRoomTypeSummary = (row) => ({
   auditStatus: Number(row.audit_status) || 0,
   auditRemark: row.audit_remark || '',
   isOnSale: Number(row.is_on_sale) || 0,
+  isForcedOffSale: Number(row.is_forced_off_sale) || 0,
   coverImageFilePath: row.cover_image_file_path || '',
   imageCount: Number(row.image_count) || 0,
   createdAt: row.created_at,
@@ -79,12 +113,32 @@ const mapRoomTypeDetail = (row, images = []) => ({
   images: images.map(mapRoomTypeImage),
 });
 
+const mapRoomTypeDraft = (row, images = []) => {
+  const draftPayload = parseJsonObject(row?.payload_json);
+  const formValues = draftPayload?.formValues && typeof draftPayload.formValues === 'object' && !Array.isArray(draftPayload.formValues)
+    ? draftPayload.formValues
+    : {};
+
+  return {
+    roomTypeId: Number(row?.source_room_type_id) || 0,
+    sourceRoomTypeId: Number(row?.source_room_type_id) || 0,
+    draftType: Number(row?.source_room_type_id) > 0 ? 'edit' : 'create',
+    formValues,
+    images: images.map(mapRoomTypeDraftImage),
+    auditStatus: Number.isInteger(Number(row?.source_audit_status)) ? Number(row.source_audit_status) : null,
+    savedAt: row?.updated_at || row?.created_at || '',
+    updatedAt: row?.updated_at || row?.created_at || '',
+  };
+};
+
 module.exports = {
   normalizeFacilityTags,
   normalizeIntIdList,
   toNullableNumber,
   toPriceCents,
+  parseRoomTypeFloorText,
   deleteLocalRoomTypeImageSafely,
   mapRoomTypeSummary,
   mapRoomTypeDetail,
+  mapRoomTypeDraft,
 };

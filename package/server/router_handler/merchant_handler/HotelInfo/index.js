@@ -1,28 +1,15 @@
-const { withTransaction } = require('../../../db/index');
 const { success, serverFail } = require('../../../utils/response');
 const { hotelProfileMediaUpload } = require('../../../middleware/upload');
 
-const { createHandlerError, parseRequestObject } = require('../../utils/common');
+const { parseRequestObject } = require('../../utils/common');
 const { withMulterUpload } = require('../../utils/upload');
 const {
-  getHotelProfileByMerchantId,
-  lockMerchantRow,
-} = require('./repository');
-const {
-  mapHotelProfile,
-  validateHotelProfilePayload,
-  ensureMerchantHotelEditable,
-  resolveReviewStatusAfterSave,
-  saveHotelProfile,
+  getMerchantHotelProfileView,
 } = require('./profile');
 const {
-  getGroupedHotelImages,
-  getGroupedHotelCertificates,
-  syncGroupedMediaByMerchantId,
-  deleteRemovedHotelImageFiles,
-  deleteRemovedHotelCertificateFiles,
-  validateReviewRequiredMedia,
-} = require('./media');
+  getMerchantHotelGroupedMedia,
+  executeHotelProfileMutation,
+} = require('./service');
 
 const mapHotelMediaUploadError = (error) => {
   if (!error) {
@@ -51,98 +38,27 @@ const getHotelProfilePayload = (req) => parseRequestObject(req.body?.payload, 'p
 const getUploadedHotelImageFiles = (req) => (Array.isArray(req.files?.hotelImageFiles) ? req.files.hotelImageFiles : []);
 const getUploadedHotelCertificateFiles = (req) => (Array.isArray(req.files?.hotelCertificateFiles) ? req.files.hotelCertificateFiles : []);
 
-const saveHotelProfileWithMedia = async ({
-  merchantUserId,
-  normalizedPayload,
-  reviewStatus,
-  hotelImagePlan,
-  hotelCertificatePlan,
-  hotelImageFiles,
-  hotelCertificateFiles,
-  requireReviewMedia = false,
-}) => {
-  const result = await withTransaction(async (tx) => {
-    await lockMerchantRow(tx, merchantUserId);
-
-    await saveHotelProfile(merchantUserId, normalizedPayload, {
-      reviewStatus,
-      executor: tx,
-    });
-
-    const removedImagePaths = await syncGroupedMediaByMerchantId({
-      tx,
-      merchantUserId,
-      rawPlan: hotelImagePlan,
-      files: hotelImageFiles,
-      type: 'image',
-    });
-    const removedCertificatePaths = await syncGroupedMediaByMerchantId({
-      tx,
-      merchantUserId,
-      rawPlan: hotelCertificatePlan,
-      files: hotelCertificateFiles,
-      type: 'certificate',
-    });
-
-    if (requireReviewMedia) {
-      const reviewMediaValidation = await validateReviewRequiredMedia(merchantUserId, tx);
-      if (!reviewMediaValidation.ok) {
-        throw createHandlerError('validation', reviewMediaValidation.message, reviewMediaValidation.field);
-      }
-    }
-
-    return {
-      removedImagePaths,
-      removedCertificatePaths,
-    };
-  });
-
-  deleteRemovedHotelImageFiles(result.removedImagePaths);
-  deleteRemovedHotelCertificateFiles(result.removedCertificatePaths);
-};
-
 const handleHotelProfileMutation = ({
   strictRequired,
   submitReview = false,
   successMessage,
 }) => async (req, res) => {
-  const editableResult = await ensureMerchantHotelEditable(req.user.id);
-  if (!editableResult.ok) {
-    throw createHandlerError('validation', editableResult.message, editableResult.field);
-  }
-
-  const rawPayload = getHotelProfilePayload(req);
-  if (!rawPayload?.hotelImagePlan || typeof rawPayload.hotelImagePlan !== 'object') {
-    throw createHandlerError('validation', '酒店图片同步计划缺失', 'hotelImagePlan');
-  }
-  if (!rawPayload?.hotelCertificatePlan || typeof rawPayload.hotelCertificatePlan !== 'object') {
-    throw createHandlerError('validation', '资质证件同步计划缺失', 'hotelCertificatePlan');
-  }
-
-  const validated = validateHotelProfilePayload(rawPayload, { strictRequired });
-  if (!validated.payload) {
-    throw createHandlerError('validation', validated.message, validated.field);
-  }
-
-  await saveHotelProfileWithMedia({
+  const hotelProfile = await executeHotelProfileMutation({
     merchantUserId: req.user.id,
-    normalizedPayload: validated.payload,
-    reviewStatus: submitReview ? 'reviewing' : resolveReviewStatusAfterSave(editableResult.reviewStatus),
-    hotelImagePlan: rawPayload.hotelImagePlan,
-    hotelCertificatePlan: rawPayload.hotelCertificatePlan,
+    rawPayload: getHotelProfilePayload(req),
     hotelImageFiles: getUploadedHotelImageFiles(req),
     hotelCertificateFiles: getUploadedHotelCertificateFiles(req),
-    requireReviewMedia: submitReview,
+    strictRequired,
+    submitReview,
   });
 
-  const hotelProfile = await getHotelProfileByMerchantId(req.user.id);
-  res.json(success(mapHotelProfile(hotelProfile), successMessage));
+  res.json(success(hotelProfile, successMessage));
 };
 
 exports.getHotelProfile = async (req, res) => {
   try {
-    const hotelProfile = await getHotelProfileByMerchantId(req.user.id);
-    res.json(success(mapHotelProfile(hotelProfile), '获取酒店信息成功'));
+    const hotelProfile = await getMerchantHotelProfileView(req.user.id);
+    res.json(success(hotelProfile, '获取酒店信息成功'));
   } catch (error) {
     console.error('获取酒店信息失败:', error);
     res.json(serverFail('获取酒店信息失败，请稍后重试'));
@@ -162,7 +78,10 @@ exports.updateHotelProfile = withMulterUpload({
 
 exports.getHotelImages = async (req, res) => {
   try {
-    const groupedImages = await getGroupedHotelImages(req.user.id);
+    const groupedImages = await getMerchantHotelGroupedMedia({
+      merchantUserId: req.user.id,
+      type: 'image',
+    });
     res.json(success(groupedImages, '获取酒店图片成功'));
   } catch (error) {
     console.error('获取酒店图片失败:', error);
@@ -172,7 +91,10 @@ exports.getHotelImages = async (req, res) => {
 
 exports.getHotelCertificates = async (req, res) => {
   try {
-    const groupedCertificates = await getGroupedHotelCertificates(req.user.id);
+    const groupedCertificates = await getMerchantHotelGroupedMedia({
+      merchantUserId: req.user.id,
+      type: 'certificate',
+    });
     res.json(success(groupedCertificates, '获取资质证件成功'));
   } catch (error) {
     console.error('获取资质证件失败:', error);

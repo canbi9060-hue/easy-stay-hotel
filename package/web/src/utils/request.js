@@ -111,6 +111,21 @@ export const getMerchantHotelCertificatesAPI = () => request.get('/merchant/hote
 export const getMerchantRoomTypesAPI = (params) => request.get('/merchant/room-types', { params });
 export const getMerchantRoomTypeSuggestionsAPI = (params) => request.get('/merchant/room-types/suggestions', { params });
 export const getMerchantRoomTypeDetailAPI = (id) => request.get(`/merchant/room-types/${id}`);
+export const getMerchantRoomTypeDraftsAPI = () => request.get('/merchant/room-type-drafts');
+export const createMerchantRoomTypeDraftAPI = (formData) =>
+  request.post('/merchant/room-type-drafts', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+export const updateMerchantRoomTypeDraftAPI = (roomTypeId, formData) =>
+  request.put(`/merchant/room-type-drafts/${roomTypeId}`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+export const deleteMerchantRoomTypeCreateDraftAPI = () => request.delete('/merchant/room-type-drafts/create');
+export const deleteMerchantRoomTypeDraftAPI = (roomTypeId) => request.delete(`/merchant/room-type-drafts/${roomTypeId}`);
 export const createMerchantRoomTypeAPI = (formData) =>
   request.post('/merchant/room-types', formData, {
     headers: {
@@ -129,5 +144,9 @@ export const deleteMerchantRoomTypeAPI = (id) => request.delete(`/merchant/room-
 export const getAdminRoomTypesAPI = (params) => request.get('/admin/room-types', { params });
 export const getAdminRoomTypeDetailAPI = (id) => request.get(`/admin/room-types/${id}`);
 export const auditAdminRoomTypeAPI = (id, data) => request.patch(`/admin/room-types/${id}/audit`, data);
+export const controlAdminRoomTypeSaleAPI = (id, data) => request.patch(`/admin/room-types/${id}/sale-control`, data);
+export const getAdminHotelsAPI = (params) => request.get('/admin/hotels', { params });
+export const getAdminHotelDetailAPI = (merchantUserId) => request.get(`/admin/hotels/${merchantUserId}`);
+export const reviewAdminHotelAPI = (merchantUserId, data) => request.patch(`/admin/hotels/${merchantUserId}/review`, data);
 
 export default request;
