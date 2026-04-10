@@ -16,11 +16,10 @@ export default function RoomTypeCore() {
   const merchantUserId = userInfo?.id || null;
   const { listState, listActions } = useRoomTypeList({ merchantUserId });
   const [hotelReviewStatus, setHotelReviewStatus] = useState(null);
-  const [hotelFloorInfo, setHotelFloorInfo] = useState(null);
   const [hotelFacilityOptions, setHotelFacilityOptions] = useState([]);
   const [hotelStatusLoading, setHotelStatusLoading] = useState(true);
+  const [listReady, setListReady] = useState(false);
   const { form, formState, formActions } = useRoomTypeForm({
-    hotelFloorInfo,
     hotelFacilityOptions,
     createDraft: listState.createDraft,
     editDraftMap: listState.editDraftMap,
@@ -42,14 +41,12 @@ export default function RoomTypeCore() {
           return;
         }
         setHotelReviewStatus(snapshot.reviewStatus);
-        setHotelFloorInfo(snapshot.floorInfo || null);
         setHotelFacilityOptions(snapshot.roomTypeFacilityOptions || []);
       } catch (error) {
         if (!active) {
           return;
         }
         setHotelReviewStatus(null);
-        setHotelFloorInfo(null);
         setHotelFacilityOptions([]);
         message.error(getRequestErrorMessage(error, '获取酒店审核状态失败。'));
       } finally {
@@ -63,6 +60,12 @@ export default function RoomTypeCore() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!listReady && !listState.loading) {
+      setListReady(true);
+    }
+  }, [listReady, listState.loading]);
 
   const canCreateRoomType = hotelReviewStatus === 'approved';
   const createDisabledReason = hotelStatusLoading
@@ -116,39 +119,42 @@ export default function RoomTypeCore() {
         onBatchDown={() => listActions.handleBatchToggleSale(false)}
       />
 
-      <Spin spinning={listState.loading}>
-        {listState.records.length ? (
-          <>
-            <Row gutter={[18, 18]}>
-              {listState.records.map((record) => (
-                <Col xs={24} lg={12} key={record.id} className="room-type__grid-col">
-                  <RoomTypeCard
-                    record={record}
-                    selected={listState.selectedSet.has(Number(record.id))}
-                    onToggleSelect={listActions.toggleSelect}
-                    onView={listActions.openDetail}
-                    onEdit={formActions.openEditModal}
-                    onDelete={listActions.handleDelete}
-                    onToggleSale={listActions.handleToggleSale}
-                  />
-                </Col>
-              ))}
-            </Row>
-            <div className="room-type__pagination">
-              <Pagination
-                current={listState.pagination.current}
-                pageSize={listState.pagination.pageSize}
-                total={listState.pagination.total}
-                onChange={listActions.handlePageChange}
-                showSizeChanger
-                showTotal={(total) => `共 ${total} 条`}
-              />
-            </div>
-          </>
-        ) : (
-          <Empty className="room-type__empty" description="暂无房型，点击右上角添加房型开始管理。" />
-        )}
-      </Spin>
+      {listReady ? (
+        <Spin spinning={listState.loading}>
+          {listState.records.length ? (
+            <>
+              <Row gutter={[18, 18]}>
+                {listState.records.map((record) => (
+                  <Col xs={24} lg={12} key={record.id} className="room-type__grid-col">
+                    <RoomTypeCard
+                      record={record}
+                      selected={listState.selectedSet.has(Number(record.id))}
+                      onToggleSelect={listActions.toggleSelect}
+                      onView={listActions.openDetail}
+                      onEdit={formActions.openEditModal}
+                      onDelete={listActions.handleDelete}
+                      onToggleSale={listActions.handleToggleSale}
+                    />
+                  </Col>
+                ))}
+              </Row>
+              <div className="room-type__pagination">
+                <Pagination
+                  current={listState.pagination.current}
+                  pageSize={listState.pagination.pageSize}
+                  total={listState.pagination.total}
+                  showSizeChanger
+                  onChange={listActions.handlePageChange}
+                  onShowSizeChange={listActions.handlePageSizeChange}
+                  showTotal={(total) => `共 ${total} 条`}
+                />
+              </div>
+            </>
+          ) : (
+            <Empty className="room-type__empty" description="暂无房型，点击右上角添加房型开始管理。" />
+          )}
+        </Spin>
+      ) : null}
 
       <RoomTypeFormModal
         form={form}
@@ -160,14 +166,12 @@ export default function RoomTypeCore() {
         statusNotice={formState.statusNotice}
         editLocked={formState.editLocked}
         submitDisabled={formState.submitDisabled}
-        hotelFloorInfo={formState.hotelFloorInfo}
-        floorSelectionIssue={formState.floorSelectionIssue}
+        bedConfigIssue={formState.bedConfigIssue}
         hotelFacilityOptions={formState.hotelFacilityOptions}
         facilityTagIssue={formState.facilityTagIssue}
         onClose={formActions.closeFormModal}
         onBeforeUpload={formActions.handleBeforeUpload}
         onRemoveImage={formActions.removeImage}
-        onFloorStartChange={formActions.handleFloorStartChange}
         onSaveDraft={formActions.handleSaveDraft}
         onSubmit={formActions.handleSubmit}
       />

@@ -74,7 +74,6 @@ export default function RoomTypeCard({
           <div className="room-type-card__id">ID: {roomTypeIdText}</div>
           <div className="room-type-card__meta">{record.bedConfig}</div>
           <div className="room-type-card__meta">{record.areaSize || '--'} ㎡</div>
-          <div className="room-type-card__meta">{record.floorText || '--'}</div>
           <div className="room-type-card__meta">最多入住 {record.maxGuests || 0} 人</div>
           <div className="room-type-card__price-row">
             <span className="room-type-card__price">￥{formatPrice(record.salePriceCents)}</span>

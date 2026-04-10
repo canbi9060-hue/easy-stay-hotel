@@ -2,15 +2,17 @@ const { query } = require('../../../db/index');
 const { auditStatusList, onSaleStatusList } = require('./constants');
 const { runQuery, lockUserRow } = require('../../utils/repository');
 
-const appendListFilters = ({
+const roomTypeSuggestionFieldMap = {
+  hotel_name: 'mh.hotel_name',
+  room_type: 'rt.room_name',
+};
+
+const appendStatusFilters = ({
   conditions,
   values,
   alias,
   auditStatus,
   saleStatus,
-  keyword,
-  merchantKeyword = '',
-  includeMerchantKeyword = false,
 }) => {
   if (auditStatusList.includes(auditStatus)) {
     conditions.push(`${alias}.audit_status = ?`);
@@ -21,15 +23,17 @@ const appendListFilters = ({
     conditions.push(`${alias}.is_on_sale = ?`);
     values.push(saleStatus);
   }
+};
 
+const appendMerchantKeywordFilter = ({
+  conditions,
+  values,
+  alias,
+  keyword = '',
+}) => {
   if (keyword) {
     conditions.push(`(${alias}.room_name LIKE ? OR CAST(${alias}.id AS CHAR) LIKE ?)`);
     values.push(`%${keyword}%`, `%${keyword}%`);
-  }
-
-  if (includeMerchantKeyword && merchantKeyword) {
-    conditions.push(`(COALESCE(u.name, '') LIKE ? OR COALESCE(u.username, '') LIKE ? OR CAST(${alias}.merchant_user_id AS CHAR) LIKE ?)`);
-    values.push(`%${merchantKeyword}%`, `%${merchantKeyword}%`, `%${merchantKeyword}%`);
   }
 };
 
@@ -43,12 +47,17 @@ const getMerchantRoomTypesPage = async ({
 }) => {
   const conditions = ['rt.merchant_user_id = ?'];
   const values = [merchantUserId];
-  appendListFilters({
+  appendStatusFilters({
     conditions,
     values,
     alias: 'rt',
     auditStatus,
     saleStatus,
+  });
+  appendMerchantKeywordFilter({
+    conditions,
+    values,
+    alias: 'rt',
     keyword,
   });
 
@@ -65,9 +74,16 @@ const getMerchantRoomTypesPage = async ({
   const rows = await query(
     `SELECT
        rt.*,
+       COALESCE(room_counter.total, 0) AS current_room_count,
        cover_image.file_path AS cover_image_file_path,
        COALESCE(image_counter.total, 0) AS image_count
      FROM merchant_room_types rt
+     LEFT JOIN (
+       SELECT room_type_id, COUNT(*) AS total
+       FROM merchant_rooms
+       GROUP BY room_type_id
+     ) room_counter
+       ON room_counter.room_type_id = rt.id
      LEFT JOIN merchant_room_type_images cover_image
        ON cover_image.id = (
          SELECT i.id
@@ -103,12 +119,17 @@ const getMerchantRoomTypeSuggestions = async ({
 }) => {
   const conditions = ['rt.merchant_user_id = ?'];
   const values = [merchantUserId];
-  appendListFilters({
+  appendStatusFilters({
     conditions,
     values,
     alias: 'rt',
     auditStatus,
     saleStatus,
+  });
+  appendMerchantKeywordFilter({
+    conditions,
+    values,
+    alias: 'rt',
     keyword,
   });
 
@@ -138,23 +159,28 @@ const getMerchantRoomTypeSuggestions = async ({
 const getAdminRoomTypesPage = async ({
   auditStatus = null,
   saleStatus = null,
-  keyword = '',
-  merchantKeyword = '',
+  hotelName = '',
+  roomTypeName = '',
   page = 1,
   pageSize = 10,
 }) => {
   const conditions = ['1 = 1'];
   const values = [];
-  appendListFilters({
+  appendStatusFilters({
     conditions,
     values,
     alias: 'rt',
     auditStatus,
     saleStatus,
-    keyword,
-    merchantKeyword,
-    includeMerchantKeyword: true,
   });
+  if (hotelName) {
+    conditions.push('mh.hotel_name = ?');
+    values.push(hotelName);
+  }
+  if (roomTypeName) {
+    conditions.push('rt.room_name = ?');
+    values.push(roomTypeName);
+  }
 
   const whereSql = conditions.join(' AND ');
   const offset = (page - 1) * pageSize;
@@ -162,7 +188,7 @@ const getAdminRoomTypesPage = async ({
   const [countRow] = await query(
     `SELECT COUNT(*) AS total
      FROM merchant_room_types rt
-     LEFT JOIN users u ON u.id = rt.merchant_user_id
+     LEFT JOIN merchant_hotels mh ON mh.merchant_user_id = rt.merchant_user_id
      WHERE ${whereSql}`,
     values
   );
@@ -172,10 +198,19 @@ const getAdminRoomTypesPage = async ({
        rt.*,
        COALESCE(u.name, u.username, CONCAT('商家#', rt.merchant_user_id)) AS merchant_name,
        u.username AS merchant_username,
+       mh.hotel_name AS hotel_name,
+       COALESCE(room_counter.total, 0) AS current_room_count,
        cover_image.file_path AS cover_image_file_path,
        COALESCE(image_counter.total, 0) AS image_count
      FROM merchant_room_types rt
      LEFT JOIN users u ON u.id = rt.merchant_user_id
+     LEFT JOIN merchant_hotels mh ON mh.merchant_user_id = rt.merchant_user_id
+     LEFT JOIN (
+       SELECT room_type_id, COUNT(*) AS total
+       FROM merchant_rooms
+       GROUP BY room_type_id
+     ) room_counter
+       ON room_counter.room_type_id = rt.id
      LEFT JOIN merchant_room_type_images cover_image
        ON cover_image.id = (
          SELECT i.id
@@ -205,12 +240,69 @@ const getAdminRoomTypesPage = async ({
   };
 };
 
+const getAdminRoomTypeSuggestions = async ({
+  field,
+  keyword = '',
+  auditStatus = null,
+  saleStatus = null,
+  hotelName = '',
+  roomTypeName = '',
+  limit = 10,
+}) => {
+  const fieldColumn = roomTypeSuggestionFieldMap[field];
+  const conditions = [
+    `${fieldColumn} IS NOT NULL`,
+    `${fieldColumn} <> ''`,
+  ];
+  const values = [];
+  appendStatusFilters({
+    conditions,
+    values,
+    alias: 'rt',
+    auditStatus,
+    saleStatus,
+  });
+
+  if (field !== 'hotel_name' && hotelName) {
+    conditions.push('mh.hotel_name = ?');
+    values.push(hotelName);
+  }
+
+  if (field !== 'room_type' && roomTypeName) {
+    conditions.push('rt.room_name = ?');
+    values.push(roomTypeName);
+  }
+
+  if (keyword) {
+    conditions.push(`${fieldColumn} LIKE ?`);
+    values.push(`%${keyword}%`);
+  }
+
+  return query(
+    `SELECT DISTINCT ${fieldColumn} AS value
+     FROM merchant_room_types rt
+     LEFT JOIN merchant_hotels mh ON mh.merchant_user_id = rt.merchant_user_id
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY value ASC
+     LIMIT ?`,
+    [...values, limit]
+  );
+};
+
 const getMerchantRoomTypeRowById = async (merchantUserId, roomTypeId, executor = null, options = {}) => {
   const suffix = options.forUpdate ? ' FOR UPDATE' : '';
   const [row] = await runQuery(
     executor,
-    `SELECT rt.*
+    `SELECT
+       rt.*,
+       COALESCE(room_counter.total, 0) AS current_room_count
      FROM merchant_room_types rt
+     LEFT JOIN (
+       SELECT room_type_id, COUNT(*) AS total
+       FROM merchant_rooms
+       GROUP BY room_type_id
+     ) room_counter
+       ON room_counter.room_type_id = rt.id
      WHERE rt.id = ? AND rt.merchant_user_id = ?
      LIMIT 1${suffix}`,
     [roomTypeId, merchantUserId]
@@ -225,9 +317,18 @@ const getAdminRoomTypeRowById = async (roomTypeId, executor = null, options = {}
     `SELECT
        rt.*,
        COALESCE(u.name, u.username, CONCAT('商家#', rt.merchant_user_id)) AS merchant_name,
-       u.username AS merchant_username
+       u.username AS merchant_username,
+       mh.hotel_name AS hotel_name,
+       COALESCE(room_counter.total, 0) AS current_room_count
      FROM merchant_room_types rt
      LEFT JOIN users u ON u.id = rt.merchant_user_id
+     LEFT JOIN merchant_hotels mh ON mh.merchant_user_id = rt.merchant_user_id
+     LEFT JOIN (
+       SELECT room_type_id, COUNT(*) AS total
+       FROM merchant_rooms
+       GROUP BY room_type_id
+     ) room_counter
+       ON room_counter.room_type_id = rt.id
      WHERE rt.id = ?
      LIMIT 1${suffix}`,
     [roomTypeId]
@@ -376,7 +477,7 @@ const getMerchantHotelReviewStatus = async (merchantUserId, executor = null) => 
 const getMerchantHotelRoomTypeMeta = async (merchantUserId, executor = null) => {
   const [row] = await runQuery(
     executor,
-    `SELECT review_status, total_floor_count, facility_selections, custom_facilities
+    `SELECT review_status, facility_selections, custom_facilities
      FROM merchant_hotels
      WHERE merchant_user_id = ?
      LIMIT 1`,
@@ -411,6 +512,7 @@ module.exports = {
   getMerchantRoomTypesPage,
   getMerchantRoomTypeSuggestions,
   getAdminRoomTypesPage,
+  getAdminRoomTypeSuggestions,
   getMerchantRoomTypeRowById,
   getAdminRoomTypeRowById,
   getRoomTypeImagesByRoomTypeId,

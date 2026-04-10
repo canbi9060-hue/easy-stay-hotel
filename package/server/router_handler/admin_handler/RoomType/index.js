@@ -5,6 +5,7 @@ const { mapRoomTypeSummary, mapRoomTypeDetail } = require('../../merchant_handle
 const {
   runQuery,
   getAdminRoomTypesPage,
+  getAdminRoomTypeSuggestions,
   getAdminRoomTypeDetail,
   getAdminRoomTypeRowById,
   getRoomTypeImagesByRoomTypeId,
@@ -15,6 +16,24 @@ const { parsePageParams, normalizeOptionalEnum } = require('../../utils/query');
 const roomTypeSaleControlActions = {
   forceOff: 'force_off',
   restoreOn: 'restore_on',
+};
+
+const roomTypeSuggestionFieldMap = {
+  hotel_name: '酒店名称',
+  room_type: '房型',
+};
+
+const normalizeOptionalSuggestionField = (value) => {
+  const field = safeTrim(value);
+  return roomTypeSuggestionFieldMap[field] ? field : '';
+};
+
+const normalizeSuggestionLimit = (value) => {
+  const raw = Number(value);
+  if (!Number.isInteger(raw) || raw <= 0) {
+    return 10;
+  }
+  return Math.min(raw, 20);
 };
 
 exports.getAdminRoomTypes = async (req, res) => {
@@ -33,8 +52,8 @@ exports.getAdminRoomTypes = async (req, res) => {
     const listResult = await getAdminRoomTypesPage({
       auditStatus,
       saleStatus,
-      keyword: safeTrim(req.query.keyword),
-      merchantKeyword: safeTrim(req.query.merchantKeyword),
+      hotelName: safeTrim(req.query.hotelName),
+      roomTypeName: safeTrim(req.query.roomTypeName),
       page,
       pageSize,
     });
@@ -50,6 +69,48 @@ exports.getAdminRoomTypes = async (req, res) => {
   } catch (error) {
     console.error('获取管理员房型列表失败:', error);
     res.json(serverFail('获取房型审核列表失败，请稍后重试'));
+  }
+};
+
+exports.getAdminRoomTypeSuggestions = async (req, res) => {
+  try {
+    const field = normalizeOptionalSuggestionField(req.query.field);
+    if (!field) {
+      return res.json(validationFail('候选字段参数不合法', 'field'));
+    }
+
+    const auditStatus = normalizeOptionalEnum(req.query.auditStatus, auditStatusList);
+    if (Number.isNaN(auditStatus)) {
+      return res.json(validationFail('审核状态参数不合法', 'auditStatus'));
+    }
+
+    const saleStatus = normalizeOptionalEnum(req.query.saleStatus, onSaleStatusList);
+    if (Number.isNaN(saleStatus)) {
+      return res.json(validationFail('售卖状态参数不合法', 'saleStatus'));
+    }
+
+    const rows = await getAdminRoomTypeSuggestions({
+      field,
+      keyword: safeTrim(req.query.keyword),
+      auditStatus,
+      saleStatus,
+      hotelName: field === 'hotel_name' ? '' : safeTrim(req.query.hotelName),
+      roomTypeName: field === 'room_type' ? '' : safeTrim(req.query.roomTypeName),
+      limit: normalizeSuggestionLimit(req.query.limit),
+    });
+
+    const list = rows
+      .map((row) => safeTrim(row?.value))
+      .filter(Boolean)
+      .map((value) => ({
+        label: value,
+        value,
+      }));
+
+    return res.json(success({ list }, `获取${roomTypeSuggestionFieldMap[field]}候选成功`));
+  } catch (error) {
+    console.error('获取管理员房型筛选候选失败:', error);
+    return res.json(serverFail('获取筛选候选失败，请稍后重试'));
   }
 };
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Alert,
+  AutoComplete,
   Button,
   Card,
   Checkbox,
@@ -12,6 +13,7 @@ import {
   Radio,
   Row,
   Select,
+  Spin,
 } from 'antd';
 import {
   ClockCircleFilled,
@@ -32,9 +34,12 @@ export default function BasicInfoModule({
   handleCityChange,
   handleDistrictChange,
   handleDetailInputChange,
+  handleDetailSearch,
+  handleDetailSelect,
+  detailAutocompleteOptions,
+  detailAutocompleteLoading,
   renderMapAlerts,
   previewMapContainerRef,
-  handleSaveAddressDraft,
   setMapModalOpen,
   mapModalOpen,
   modalMapContainerRef,
@@ -57,6 +62,17 @@ export default function BasicInfoModule({
     : totalFloorCount === 2
       ? '系统将自动生成：1层、2层'
       : `系统将自动生成：1层、2层 ... ${totalFloorCount}层`;
+
+  const detailInputNode = (
+    <Input
+      maxLength={200}
+      placeholder="请输入详细地址"
+      prefix={<EnvironmentOutlined />}
+      suffix={detailAutocompleteLoading ? <Spin size="small" /> : null}
+      disabled={readOnly || Boolean(mapUnavailableReason || mapLoadError) || !addressValue?.city}
+      onChange={handleDetailInputChange}
+    />
+  );
 
   return (
     <>
@@ -102,13 +118,37 @@ export default function BasicInfoModule({
               <Col xs={24}>
                 <div className="hotel-info__section-title">酒店地址</div>
                 <Row gutter={[12, 12]}>
-                  <Col xs={24} sm={12} lg={6}><Form.Item label="国家 / 地区" name={['address', 'country']}><Select options={countryOptions} disabled /></Form.Item></Col>
-                  <Col xs={24} sm={12} lg={6}><Form.Item className="hotel-info__label-no-required-mark" label="省份" name={['address', 'province']} rules={[{ required: true, message: '请选择省份。' }]}><Select options={provinceOptions} placeholder="请选择省份" loading={regionLoading} disabled={readOnly} onChange={handleProvinceChange} /></Form.Item></Col>
-                  <Col xs={24} sm={12} lg={6}><Form.Item className="hotel-info__label-no-required-mark" label="城市" name={['address', 'city']} rules={[{ required: true, message: '请选择城市。' }]}><Select options={cityOptions} placeholder="请选择城市" loading={regionLoading} disabled={readOnly || !addressValue?.province} onChange={handleCityChange} /></Form.Item></Col>
-                  <Col xs={24} sm={12} lg={6}><Form.Item className="hotel-info__label-no-required-mark" label="区县" name={['address', 'district']} rules={[{ required: true, message: '请选择区县。' }]}><Select options={districtOptions} placeholder="请选择区县" loading={regionLoading} disabled={readOnly || !addressValue?.city} onChange={handleDistrictChange} /></Form.Item></Col>
+                  <Col xs={24} sm={12} lg={6}>
+                    <Form.Item label="国家 / 地区" name={['address', 'country']}>
+                      <Select options={countryOptions} disabled />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12} lg={6}>
+                    <Form.Item className="hotel-info__label-no-required-mark" label="省份" name={['address', 'province']} rules={[{ required: true, message: '请选择省份。' }]}>
+                      <Select options={provinceOptions} placeholder="请选择省份" loading={regionLoading} disabled={readOnly} onChange={handleProvinceChange} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12} lg={6}>
+                    <Form.Item className="hotel-info__label-no-required-mark" label="城市" name={['address', 'city']} rules={[{ required: true, message: '请选择城市。' }]}>
+                      <Select options={cityOptions} placeholder="请选择城市" loading={regionLoading} disabled={readOnly || !addressValue?.province} onChange={handleCityChange} />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={12} lg={6}>
+                    <Form.Item className="hotel-info__label-no-required-mark" label="区县" name={['address', 'district']} rules={[{ required: true, message: '请选择区县。' }]}>
+                      <Select options={districtOptions} placeholder="请选择区县" loading={regionLoading} disabled={readOnly || !addressValue?.city} onChange={handleDistrictChange} />
+                    </Form.Item>
+                  </Col>
                 </Row>
                 <Form.Item name={['address', 'detail']} rules={[{ required: true, message: '请输入详细地址。' }]}>
-                  <Input maxLength={200} placeholder="请输入详细地址" prefix={<EnvironmentOutlined />} disabled={readOnly} onChange={handleDetailInputChange} />
+                  <AutoComplete
+                    style={{ width: '100%' }}
+                    options={detailAutocompleteOptions}
+                    onSearch={handleDetailSearch}
+                    onSelect={handleDetailSelect}
+                    disabled={readOnly || Boolean(mapUnavailableReason || mapLoadError) || !addressValue?.city}
+                  >
+                    {detailInputNode}
+                  </AutoComplete>
                 </Form.Item>
 
                 {renderMapAlerts()}
@@ -121,11 +161,19 @@ export default function BasicInfoModule({
                         <div className="hotel-info__map-empty-desc">{mapUnavailableReason}</div>
                       </div>
                     </div>
+                  ) : mapLoadError ? (
+                    <div className="hotel-info__map-empty hotel-info__map-empty--preview">
+                      <div className="hotel-info__map-empty-content">
+                        <div className="hotel-info__map-empty-title">地图加载失败</div>
+                        <div className="hotel-info__map-empty-desc">{mapLoadError}</div>
+                      </div>
+                    </div>
                   ) : (
                     <div className="hotel-info__map-preview" ref={previewMapContainerRef} />
                   )}
-                  <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly || mapActionDisabled}>暂存定位</Button>
-                  <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={mapActionDisabled}>展开地图</Button>
+                  <Button className="hotel-info__map-expand" onClick={() => setMapModalOpen(true)} disabled={mapActionDisabled}>
+                    展开地图
+                  </Button>
                   {!mapUnavailableReason && mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
                 </div>
               </Col>
@@ -222,7 +270,6 @@ export default function BasicInfoModule({
         ) : (
           <div className="hotel-info__map-shell hotel-info__map-shell--modal">
             <div className="hotel-info__map-modal" ref={modalMapContainerRef} />
-            <Button className="hotel-info__map-save" onClick={handleSaveAddressDraft} disabled={readOnly}>暂存定位</Button>
             {mapStatusText ? <div className="hotel-info__map-loading">{mapStatusText}</div> : null}
           </div>
         )}

@@ -18,7 +18,6 @@ import {
   submitMerchantHotelProfileSnapshot,
 } from '../../../../utils/hotel-info';
 
-const addressDraftStorageKey = 'merchant_hotel_address_draft';
 const hotelInfoLoadMessageKey = 'merchant-hotel-info-load-error';
 
 export default function useHotelInfoProfile({
@@ -145,7 +144,6 @@ export default function useHotelInfoProfile({
   const refreshProfileMediaState = useCallback(async () => {
     await loadHotelImages({ notify: false });
     await loadHotelCertificates({ notify: false });
-    window.sessionStorage.removeItem(addressDraftStorageKey);
   }, [loadHotelCertificates, loadHotelImages]);
 
   const saveAllProfile = useCallback(async () => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu } from 'antd';
 import {
+  AuditOutlined,
   AppstoreOutlined,
   BankOutlined,
   BarChartOutlined,
@@ -20,7 +21,8 @@ const items = [
   { key: '/merchant/dashboard', icon: <BarChartOutlined />, label: '数据统计' },
   { key: '/merchant/hotel-info', icon: <BankOutlined />, label: '酒店信息' },
   { key: '/merchant/room-type', icon: <AppstoreOutlined />, label: '房型管理' },
-  { key: '/merchant/room-detail', icon: <UnorderedListOutlined />, label: '房间明细' },
+  { key: '/merchant/room-detail', icon: <UnorderedListOutlined />, label: '房间管理' },
+  { key: '/merchant/check-in', icon: <AuditOutlined />, label: '入住登记' },
   { key: '/merchant/order', icon: <FileTextOutlined />, label: '订单管理' },
   { key: '/merchant/customer', icon: <TeamOutlined />, label: '客户管理' },
   { key: '/merchant/review', icon: <StarOutlined />, label: '评价管理' },

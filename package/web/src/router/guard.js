@@ -1,5 +1,6 @@
 import { useSelector } from 'react-redux';
 import { Navigate } from 'react-router-dom';
+import Loading from '../components/Loading';
 
 // 权限守卫组件
 export const AuthGuard = ({ meta, children }) => {
@@ -7,7 +8,7 @@ export const AuthGuard = ({ meta, children }) => {
 
   // 1. 未初始化（正在获取用户信息）→ 等待
   if (!initialized) {
-    return null;
+    return <Loading />;
   }
 
   // 2. 没登录 → 跳登录

@@ -94,6 +94,13 @@ export const uploadAvatarAPI = (formData) =>
   });
 
 export const getMerchantHotelProfileAPI = () => request.get('/merchant/hotel-profile');
+export const getMerchantMapInitialLocationAPI = () => request.get('/merchant/map/initial-location');
+export const getMerchantMapDistrictOptionsAPI = (params) =>
+  request.get('/merchant/map/district-options', { params });
+export const getMerchantMapGeocodeAPI = (params) =>
+  request.get('/merchant/map/geocode', { params });
+export const getMerchantMapRegeocodeAPI = (params) =>
+  request.get('/merchant/map/regeocode', { params });
 export const updateMerchantHotelProfileAPI = (data) =>
   request.put('/merchant/hotel-profile', data, data instanceof FormData ? {
     headers: {
@@ -141,10 +148,32 @@ export const updateMerchantRoomTypeAPI = (id, formData) =>
 export const updateMerchantRoomTypeSaleStatusAPI = (id, data) => request.patch(`/merchant/room-types/${id}/on-sale`, data);
 export const batchUpdateMerchantRoomTypeSaleStatusAPI = (data) => request.patch('/merchant/room-types/on-sale/batch', data);
 export const deleteMerchantRoomTypeAPI = (id) => request.delete(`/merchant/room-types/${id}`);
+export const getMerchantRoomsAPI = (params) => request.get('/merchant/rooms', { params });
+export const createMerchantRoomAPI = (data) => request.post('/merchant/rooms', data);
+export const batchGenerateMerchantRoomsAPI = (data) => request.post('/merchant/rooms/batch-generate', data);
+export const updateMerchantRoomAPI = (id, data) => request.put(`/merchant/rooms/${id}`, data);
+export const deleteMerchantRoomAPI = (id) => request.delete(`/merchant/rooms/${id}`);
+export const transitionMerchantRoomAPI = (id, data) => request.patch(`/merchant/rooms/${id}/transition`, data);
+export const batchUpdateMerchantRoomPhysicalStatusAPI = (data) => request.patch('/merchant/rooms/batch-physical-status', data);
+export const batchBindMerchantRoomTypeAPI = (data) => request.patch('/merchant/rooms/batch-room-type', data);
+export const getMerchantCheckInMetaAPI = () => request.get('/merchant/check-in/meta');
+export const createMerchantStayReservationAPI = (data) => request.post('/merchant/check-in/reservations', data);
+export const createMerchantStayWalkInAPI = (data) => request.post('/merchant/check-in/walk-ins', data);
+export const confirmMerchantStayCheckInAPI = (id, data) => request.patch(`/merchant/check-in/orders/${id}/check-in`, data);
+export const cancelMerchantStayReservationAPI = (id, data) => request.patch(`/merchant/check-in/orders/${id}/cancel`, data);
+export const extendMerchantStayOrderAPI = (id, data) => request.patch(`/merchant/check-in/orders/${id}/extend`, data);
+export const checkOutMerchantStayOrderAPI = (id, data) => request.patch(`/merchant/check-in/orders/${id}/check-out`, data);
+export const getMerchantStayOrdersAPI = (params) => request.get('/merchant/check-in/orders', { params });
+export const getMerchantStayOrderDetailAPI = (id) => request.get(`/merchant/check-in/orders/${id}`);
 export const getAdminRoomTypesAPI = (params) => request.get('/admin/room-types', { params });
+export const getAdminRoomTypeSuggestionsAPI = (params) => request.get('/admin/room-types/suggestions', { params });
 export const getAdminRoomTypeDetailAPI = (id) => request.get(`/admin/room-types/${id}`);
 export const auditAdminRoomTypeAPI = (id, data) => request.patch(`/admin/room-types/${id}/audit`, data);
 export const controlAdminRoomTypeSaleAPI = (id, data) => request.patch(`/admin/room-types/${id}/sale-control`, data);
+export const getAdminRoomsAPI = (params) => request.get('/admin/rooms', { params });
+export const getAdminRoomSuggestionsAPI = (params) => request.get('/admin/rooms/suggestions', { params });
+export const getAdminRoomDetailAPI = (id) => request.get(`/admin/rooms/${id}`);
+export const controlAdminRoomSaleAPI = (id, data) => request.patch(`/admin/rooms/${id}/sale-control`, data);
 export const getAdminHotelsAPI = (params) => request.get('/admin/hotels', { params });
 export const getAdminHotelDetailAPI = (merchantUserId) => request.get(`/admin/hotels/${merchantUserId}`);
 export const reviewAdminHotelAPI = (merchantUserId, data) => request.patch(`/admin/hotels/${merchantUserId}/review`, data);

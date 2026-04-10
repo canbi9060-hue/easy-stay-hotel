@@ -4,7 +4,7 @@ import {
   revokePreviewUrls,
   validateImageFile,
 } from '../common';
-import { buildRoomTypeFloorText, ROOM_TYPE_AUDIT_STATUS } from './constants';
+import { ROOM_TYPE_AUDIT_STATUS } from './constants';
 
 const normalizeMerchantUserId = (merchantUserId) => {
   const numericId = Number(merchantUserId);
@@ -142,15 +142,11 @@ export const hydrateImageDrafts = async (draftItems = [], resolveImageUrl = (val
 };
 
 export const buildRoomTypeDraftSavePayload = (values, imageItems = []) => {
-  const floorText = buildRoomTypeFloorText(values?.floorStart, values?.floorEnd) || values?.floorText || '';
   const { imagePlan, files } = buildRoomTypeImagePlan(imageItems);
 
   return {
     payload: {
-      formValues: {
-        ...values,
-        floorText,
-      },
+      formValues: { ...values },
       imagePlan,
     },
     files,
@@ -158,15 +154,11 @@ export const buildRoomTypeDraftSavePayload = (values, imageItems = []) => {
 };
 
 export const buildRoomTypeSubmitPayload = (values, imageItems = []) => {
-  const floorText = buildRoomTypeFloorText(values?.floorStart, values?.floorEnd) || values?.floorText || '';
   const { imagePlan, files } = buildRoomTypeImagePlan(imageItems);
   const payload = {
     ...values,
-    floorText,
     imagePlan,
   };
-  delete payload.floorStart;
-  delete payload.floorEnd;
 
   return {
     payload,

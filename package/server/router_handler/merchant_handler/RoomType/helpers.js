@@ -37,30 +37,6 @@ const toPriceCents = (value) => {
   return Math.round(num * 100);
 };
 
-const parseRoomTypeFloorText = (value) => {
-  const floorText = safeTrim(value);
-  if (!floorText) {
-    return null;
-  }
-
-  const match = floorText.match(/^(\d+)(?:-(\d+))?层$/);
-  if (!match) {
-    return null;
-  }
-
-  const floorStart = Number(match[1]);
-  const floorEnd = Number(match[2] || match[1]);
-  if (!Number.isInteger(floorStart) || !Number.isInteger(floorEnd) || floorStart <= 0 || floorEnd < floorStart) {
-    return null;
-  }
-
-  return {
-    floorStart,
-    floorEnd,
-    floorText: floorStart === floorEnd ? `${floorStart}层` : `${floorStart}-${floorEnd}层`,
-  };
-};
-
 const deleteLocalRoomTypeImageSafely = (filePath) => {
   return deleteLocalUploadSafely(filePath, '/uploads/room-type-images/');
 };
@@ -87,11 +63,11 @@ const mapRoomTypeSummary = (row) => ({
   id: Number(row.id),
   merchantUserId: Number(row.merchant_user_id),
   merchantName: row.merchant_name || row.merchant_username || '',
+  hotelName: row.hotel_name || '',
   roomName: row.room_name || '',
   bedConfig: row.bed_config || '',
   areaSize: row.area_size === null || row.area_size === undefined ? null : Number(row.area_size),
-  floorText: row.floor_text || '',
-  roomCount: Number(row.room_count) || 0,
+  roomCount: Number(row.current_room_count ?? row.bound_room_count ?? row.room_count) || 0,
   maxGuests: Number(row.max_guests) || 0,
   description: row.description || '',
   facilityTags: parseJsonArray(row.facility_tags),
@@ -136,7 +112,6 @@ module.exports = {
   normalizeIntIdList,
   toNullableNumber,
   toPriceCents,
-  parseRoomTypeFloorText,
   deleteLocalRoomTypeImageSafely,
   mapRoomTypeSummary,
   mapRoomTypeDetail,

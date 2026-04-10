@@ -6,18 +6,16 @@ import {
   getRequestErrorMessage,
 } from '../../../../utils/request';
 import {
-  buildRoomTypeFloorText,
+  buildRoomTypeBedConfig,
   createDraftImageItem,
   createExistingImageItem,
   createNewImageItem,
   emptyRoomTypeFormValues,
   getRoomTypeEditNotice,
-  hasHotelFloorInfo,
   maxRoomTypeImageCount,
-  normalizeHotelFloorInfo,
   normalizeRoomTypeFormValues,
+  resolveRoomTypeBedConfigSelection,
   resolveRoomTypeFacilitySelection,
-  resolveRoomTypeFloorSelection,
   revokeDraftPreviewUrls,
   saveMerchantRoomTypeCreateDraft,
   saveMerchantRoomTypeEditDraft,
@@ -29,7 +27,6 @@ import {
 import { toUploadFileItem } from '../../../../utils/common';
 
 export default function useRoomTypeForm({
-  hotelFloorInfo,
   hotelFacilityOptions = [],
   createDraft,
   editDraftMap = {},
@@ -44,12 +41,12 @@ export default function useRoomTypeForm({
   const [submitting, setSubmitting] = useState(false);
   const [imageItems, setImageItems] = useState([]);
   const [detail, setDetail] = useState(null);
-  const [floorSelectionIssue, setFloorSelectionIssue] = useState(null);
+  const [bedConfigIssue, setBedConfigIssue] = useState(null);
   const [facilityTagIssue, setFacilityTagIssue] = useState(null);
-  const floorStart = Form.useWatch('floorStart', form);
-  const floorEnd = Form.useWatch('floorEnd', form);
+  const bedType = Form.useWatch('bedType', form);
+  const bedWidth = Form.useWatch('bedWidth', form);
+  const bedCount = Form.useWatch('bedCount', form);
   const facilityTags = Form.useWatch('facilityTags', form);
-  const normalizedHotelFloorInfo = useMemo(() => normalizeHotelFloorInfo(hotelFloorInfo), [hotelFloorInfo]);
   const normalizedHotelFacilityOptions = useMemo(() => {
     const seen = new Set();
     return Array.isArray(hotelFacilityOptions)
@@ -76,7 +73,7 @@ export default function useRoomTypeForm({
     form.resetFields();
     setDetail(null);
     setRoomTypeId(null);
-    setFloorSelectionIssue(null);
+    setBedConfigIssue(null);
     setFacilityTagIssue(null);
     replaceImageItems([]);
   }, [form, replaceImageItems]);
@@ -97,36 +94,36 @@ export default function useRoomTypeForm({
   );
 
   const applyRoomTypeValues = useCallback((sourceValues) => {
-    const normalizedValues = normalizeRoomTypeFormValues(sourceValues, normalizedHotelFloorInfo);
-    const floorSelection = resolveRoomTypeFloorSelection(normalizedValues.floorText, normalizedHotelFloorInfo);
+    const normalizedValues = normalizeRoomTypeFormValues(sourceValues);
+    const bedConfigSelection = resolveRoomTypeBedConfigSelection(normalizedValues.bedConfig);
     const nextFacilityTagIssue = resolveRoomTypeFacilitySelection(
       normalizedValues.facilityTags,
       normalizedHotelFacilityOptions
     );
 
     form.setFieldsValue(normalizedValues);
-    setFloorSelectionIssue(floorSelection.isInvalid ? {
-      message: floorSelection.invalidMessage,
-      floorText: floorSelection.originalFloorText,
+    setBedConfigIssue(bedConfigSelection.isInvalid ? {
+      message: bedConfigSelection.invalidMessage,
+      bedConfig: bedConfigSelection.originalBedConfig,
     } : null);
     setFacilityTagIssue(nextFacilityTagIssue.isInvalid ? {
       message: nextFacilityTagIssue.invalidMessage,
       invalidTags: nextFacilityTagIssue.invalidTags,
     } : null);
-  }, [form, normalizedHotelFacilityOptions, normalizedHotelFloorInfo]);
+  }, [form, normalizedHotelFacilityOptions]);
 
   useEffect(() => {
-    const nextFloorText = buildRoomTypeFloorText(floorStart, floorEnd);
-    if (nextFloorText && floorSelectionIssue) {
-      setFloorSelectionIssue(null);
+    const nextBedConfig = buildRoomTypeBedConfig(bedType, bedWidth, bedCount);
+    if (nextBedConfig && bedConfigIssue) {
+      setBedConfigIssue(null);
     }
 
-    const currentFloorText = String(form.getFieldValue('floorText') || '');
-    const targetFloorText = nextFloorText || (floorSelectionIssue ? currentFloorText : '');
-    if (currentFloorText !== targetFloorText) {
-      form.setFieldValue('floorText', targetFloorText);
+    const currentBedConfig = String(form.getFieldValue('bedConfig') || '');
+    const targetBedConfig = nextBedConfig || (bedConfigIssue ? currentBedConfig : '');
+    if (currentBedConfig !== targetBedConfig) {
+      form.setFieldValue('bedConfig', targetBedConfig);
     }
-  }, [floorEnd, floorSelectionIssue, floorStart, form]);
+  }, [bedConfigIssue, bedCount, bedType, bedWidth, form]);
 
   useEffect(() => {
     if (!open) {
@@ -198,6 +195,20 @@ export default function useRoomTypeForm({
     };
   }, [applyRoomTypeValues, createDraft, editDraftMap, mode, open, replaceImageItems, resetFormState, roomTypeId]);
 
+  const collectRoomTypeFormValues = useCallback((validatedValues = null) => {
+    const baseValues = {
+      ...emptyRoomTypeFormValues,
+      ...form.getFieldsValue(true),
+      ...(validatedValues || {}),
+    };
+    const nextBedConfig = buildRoomTypeBedConfig(baseValues.bedType, baseValues.bedWidth, baseValues.bedCount);
+
+    return {
+      ...baseValues,
+      bedConfig: nextBedConfig || (bedConfigIssue ? String(baseValues.bedConfig || '') : ''),
+    };
+  }, [bedConfigIssue, form]);
+
   const openCreateModal = useCallback((options = {}) => {
     if (options.canCreate === false) {
       message.warning(options.disabledReason || '酒店信息审核通过后才能添加房型');
@@ -265,10 +276,7 @@ export default function useRoomTypeForm({
     }
 
     try {
-      const values = {
-        ...emptyRoomTypeFormValues,
-        ...form.getFieldsValue(true),
-      };
+      const values = collectRoomTypeFormValues();
       if (mode === 'edit' && roomTypeId) {
         await saveMerchantRoomTypeEditDraft(roomTypeId, values, imageItems);
       } else {
@@ -282,16 +290,7 @@ export default function useRoomTypeForm({
     } catch (error) {
       message.error(getRequestErrorMessage(error, '保存草稿失败，请稍后重试。'));
     }
-  }, [editLocked, form, imageItems, mode, onDraftSaved, roomTypeId]);
-
-  const handleFloorStartChange = useCallback((value) => {
-    const nextFloorStart = value ?? null;
-    form.setFieldValue('floorStart', nextFloorStart);
-    const currentFloorEnd = Number(form.getFieldValue('floorEnd'));
-    if (Number.isInteger(nextFloorStart) && Number.isInteger(currentFloorEnd) && currentFloorEnd < nextFloorStart) {
-      form.setFieldValue('floorEnd', null);
-    }
-  }, [form]);
+  }, [collectRoomTypeFormValues, editLocked, imageItems, mode, onDraftSaved, roomTypeId]);
 
   const handleSubmit = useCallback(async () => {
     try {
@@ -299,16 +298,8 @@ export default function useRoomTypeForm({
         message.warning('房型正在审核中，暂不允许提交新的修改。');
         return;
       }
-      if (!hasHotelFloorInfo(normalizedHotelFloorInfo)) {
-        message.error('请先在酒店资料中完善总楼层。');
-        return;
-      }
       if (!normalizedHotelFacilityOptions.length) {
         message.error('请先在酒店信息页勾选或添加设施。');
-        return;
-      }
-      if (floorSelectionIssue) {
-        message.error(floorSelectionIssue.message);
         return;
       }
       if (facilityTagIssue) {
@@ -316,9 +307,10 @@ export default function useRoomTypeForm({
         return;
       }
 
-      const values = await form.validateFields();
-      if (!Number.isInteger(Number(values.floorStart)) || !Number.isInteger(Number(values.floorEnd))) {
-        message.error('请选择合法的楼层区间。');
+      const validatedValues = await form.validateFields();
+      const values = collectRoomTypeFormValues(validatedValues);
+      if (!values.bedConfig) {
+        message.error('请选择完整的床型配置。');
         return;
       }
       if (!imageItems.length) {
@@ -347,15 +339,14 @@ export default function useRoomTypeForm({
   }, [
     closeFormModal,
     facilityTagIssue,
-    floorSelectionIssue,
     form,
     imageItems,
     mode,
     normalizedHotelFacilityOptions.length,
-    normalizedHotelFloorInfo,
     onSuccess,
     roomTypeId,
     submitDisabled,
+    collectRoomTypeFormValues,
   ]);
 
   return {
@@ -369,8 +360,7 @@ export default function useRoomTypeForm({
       statusNotice,
       editLocked,
       submitDisabled,
-      hotelFloorInfo: normalizedHotelFloorInfo,
-      floorSelectionIssue,
+      bedConfigIssue,
       hotelFacilityOptions: normalizedHotelFacilityOptions,
       facilityTagIssue,
     },
@@ -379,7 +369,6 @@ export default function useRoomTypeForm({
       openEditModal,
       closeFormModal,
       handleBeforeUpload,
-      handleFloorStartChange,
       removeImage,
       handleSaveDraft,
       handleSubmit,

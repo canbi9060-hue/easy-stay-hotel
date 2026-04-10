@@ -1,10 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Drawer,
   Empty,
   Form,
-  Image,
   Input,
   Modal,
   Select,
@@ -14,12 +13,13 @@ import {
   Tag,
   message,
 } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 import {
   auditAdminRoomTypeAPI,
   controlAdminRoomTypeSaleAPI,
   getAdminRoomTypeDetailAPI,
+  getAdminRoomTypeSuggestionsAPI,
   getAdminRoomTypesAPI,
-  getFileUrl,
   getRequestErrorMessage,
 } from '../../../utils/request';
 import {
@@ -31,6 +31,7 @@ import {
   roomTypeAuditStatusOptions,
   roomTypeSaleStatusOptions,
 } from '../../../utils/room-type';
+import RoomTypeDetailContent from '../../../components/RoomTypeDetailContent';
 import './index.scss';
 
 const roomTypeRejectReasonOptions = [
@@ -40,14 +41,67 @@ const roomTypeRejectReasonOptions = [
   '房型设施标签与酒店已配置设施不匹配，请调整后重新提交。',
 ];
 
+const initialFilters = {
+  hotelName: undefined,
+  roomTypeName: undefined,
+  auditStatus: 'all',
+  saleStatus: 'all',
+};
+
+const suggestionFieldMap = {
+  hotelName: 'hotel_name',
+  roomTypeName: 'room_type',
+};
+
+const emptySuggestionState = {
+  hotelName: [],
+  roomTypeName: [],
+};
+
+const emptySuggestionLoading = {
+  hotelName: false,
+  roomTypeName: false,
+};
+
+const defaultSuggestionRequestState = {
+  hotelName: 0,
+  roomTypeName: 0,
+};
+
+const buildSuggestionParams = (field, filters, keyword) => {
+  const query = getAdminRoomTypeQuery({
+    auditStatus: filters.auditStatus,
+    saleStatus: filters.saleStatus,
+    hotelName: filters.hotelName,
+    roomTypeName: filters.roomTypeName,
+    page: 1,
+    pageSize: 1,
+  });
+
+  const params = {
+    field: suggestionFieldMap[field],
+    keyword: keyword || undefined,
+    auditStatus: query.auditStatus ?? undefined,
+    saleStatus: query.saleStatus ?? undefined,
+    limit: 12,
+  };
+
+  if (field !== 'hotelName' && filters.hotelName) {
+    params.hotelName = filters.hotelName;
+  }
+  if (field !== 'roomTypeName' && filters.roomTypeName) {
+    params.roomTypeName = filters.roomTypeName;
+  }
+
+  return params;
+};
+
 export default function RoomTypeReview() {
   const [loading, setLoading] = useState(true);
   const [tableData, setTableData] = useState([]);
-  const [filters, setFilters] = useState({ auditStatus: 'all', saleStatus: 'all' });
-  const [keyword, setKeyword] = useState('');
-  const [merchantKeyword, setMerchantKeyword] = useState('');
-  const [searchKeyword, setSearchKeyword] = useState('');
-  const [searchMerchantKeyword, setSearchMerchantKeyword] = useState('');
+  const [filters, setFilters] = useState(initialFilters);
+  const [suggestionOptions, setSuggestionOptions] = useState(emptySuggestionState);
+  const [suggestionLoading, setSuggestionLoading] = useState(emptySuggestionLoading);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 10, total: 0 });
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -57,10 +111,58 @@ export default function RoomTypeReview() {
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectForm] = Form.useForm();
   const [reloadVersion, setReloadVersion] = useState(0);
+
+  const suggestionTimerRef = useRef({});
+  const suggestionRequestRef = useRef(defaultSuggestionRequestState);
+
   const currentPage = pagination.current;
   const currentPageSize = pagination.pageSize;
-
   const refreshList = useCallback(() => setReloadVersion((value) => value + 1), []);
+
+  const clearSuggestionTimer = useCallback((field) => {
+    const timer = suggestionTimerRef.current[field];
+    if (timer) {
+      clearTimeout(timer);
+      suggestionTimerRef.current[field] = null;
+    }
+  }, []);
+
+  const fetchSuggestions = useCallback(async (field, rawKeyword = '') => {
+    const keyword = String(rawKeyword || '').trim();
+    const requestId = (suggestionRequestRef.current[field] || 0) + 1;
+    suggestionRequestRef.current[field] = requestId;
+    setSuggestionLoading((prev) => ({ ...prev, [field]: true }));
+
+    try {
+      const res = await getAdminRoomTypeSuggestionsAPI(buildSuggestionParams(field, filters, keyword));
+      if (suggestionRequestRef.current[field] !== requestId) {
+        return;
+      }
+      const list = Array.isArray(res.data?.list) ? res.data.list : [];
+      setSuggestionOptions((prev) => ({
+        ...prev,
+        [field]: list.map((item) => ({
+          label: item.label || item.value,
+          value: item.value,
+        })),
+      }));
+    } catch (_error) {
+      if (suggestionRequestRef.current[field] === requestId) {
+        setSuggestionOptions((prev) => ({ ...prev, [field]: [] }));
+      }
+    } finally {
+      if (suggestionRequestRef.current[field] === requestId) {
+        setSuggestionLoading((prev) => ({ ...prev, [field]: false }));
+      }
+    }
+  }, [filters]);
+
+  const scheduleFetchSuggestions = useCallback((field, rawKeyword = '', delay = 260) => {
+    clearSuggestionTimer(field);
+    suggestionTimerRef.current[field] = setTimeout(() => {
+      fetchSuggestions(field, rawKeyword);
+    }, delay);
+  }, [clearSuggestionTimer, fetchSuggestions]);
 
   useEffect(() => {
     (async () => {
@@ -69,13 +171,13 @@ export default function RoomTypeReview() {
         const res = await getAdminRoomTypesAPI(getAdminRoomTypeQuery({
           auditStatus: filters.auditStatus,
           saleStatus: filters.saleStatus,
-          keyword: searchKeyword,
-          merchantKeyword: searchMerchantKeyword,
+          hotelName: filters.hotelName,
+          roomTypeName: filters.roomTypeName,
           page: currentPage,
           pageSize: currentPageSize,
         }));
-        const nextList = res.data.list;
-        const total = Number(res.data.pagination.total);
+        const nextList = Array.isArray(res.data?.list) ? res.data.list : [];
+        const total = Number(res.data?.pagination?.total || 0);
         setTableData(nextList);
         setPagination((prev) => ({
           ...prev,
@@ -88,7 +190,23 @@ export default function RoomTypeReview() {
         setLoading(false);
       }
     })();
-  }, [currentPage, currentPageSize, filters.auditStatus, filters.saleStatus, reloadVersion, searchKeyword, searchMerchantKeyword]);
+  }, [
+    currentPage,
+    currentPageSize,
+    filters.auditStatus,
+    filters.saleStatus,
+    filters.hotelName,
+    filters.roomTypeName,
+    reloadVersion,
+  ]);
+
+  useEffect(() => {
+    setSuggestionOptions(emptySuggestionState);
+  }, [filters.auditStatus, filters.saleStatus]);
+
+  useEffect(() => () => {
+    Object.keys(suggestionFieldMap).forEach((field) => clearSuggestionTimer(field));
+  }, [clearSuggestionTimer]);
 
   const openDetail = useCallback(async (recordId) => {
     try {
@@ -170,11 +288,33 @@ export default function RoomTypeReview() {
     }
   }, [detailData?.id, openDetail, refreshList, rejectForm, rejectTarget]);
 
+  const updateFilter = useCallback((key, value) => {
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value || undefined,
+    }));
+  }, []);
+
+  const handleStatusFilterChange = useCallback((key, value) => {
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setFilters((prev) => ({
+      ...prev,
+      [key]: value,
+    }));
+  }, []);
+
+  const handleResetFilters = useCallback(() => {
+    setPagination((prev) => ({ ...prev, current: 1 }));
+    setFilters(initialFilters);
+    setSuggestionOptions(emptySuggestionState);
+  }, []);
+
   const columns = useMemo(() => ([
     {
       title: '房型信息',
       dataIndex: 'roomName',
-      render: (_, record) => (
+      render: (_value, record) => (
         <div>
           <div className="admin-room-review__room-name">{record.roomName}</div>
           <div className="admin-room-review__sub">ID: {record.id}</div>
@@ -182,9 +322,9 @@ export default function RoomTypeReview() {
       ),
     },
     {
-      title: '商家',
-      dataIndex: 'merchantName',
-      render: (value, record) => value || `商家 #${record.merchantUserId}`,
+      title: '酒店',
+      dataIndex: 'hotelName',
+      render: (value) => value || '--',
     },
     {
       title: '审核状态',
@@ -216,7 +356,7 @@ export default function RoomTypeReview() {
     {
       title: '操作',
       key: 'actions',
-      render: (_, record) => (
+      render: (_value, record) => (
         <Space wrap>
           <Button type="link" size="small" onClick={() => openDetail(record.id)}>详情</Button>
           {Number(record.auditStatus) === ROOM_TYPE_AUDIT_STATUS.PENDING ? (
@@ -246,46 +386,57 @@ export default function RoomTypeReview() {
       </div>
 
       <div className="admin-room-review__toolbar">
-        <Select
-          value={filters.auditStatus}
-          options={roomTypeAuditStatusOptions}
-          onChange={(value) => {
-            setFilters((prev) => ({ ...prev, auditStatus: value }));
-            setPagination((prev) => ({ ...prev, current: 1 }));
-          }}
-          style={{ width: 140 }}
-        />
-        <Select
-          value={filters.saleStatus}
-          options={roomTypeSaleStatusOptions}
-          onChange={(value) => {
-            setFilters((prev) => ({ ...prev, saleStatus: value }));
-            setPagination((prev) => ({ ...prev, current: 1 }));
-          }}
-          style={{ width: 140 }}
-        />
-        <Input.Search
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          onSearch={() => {
-            setPagination((prev) => ({ ...prev, current: 1 }));
-            setSearchKeyword(keyword.trim());
-          }}
-          placeholder="搜索房型名或房型 ID"
-          allowClear
-          style={{ width: 240 }}
-        />
-        <Input.Search
-          value={merchantKeyword}
-          onChange={(event) => setMerchantKeyword(event.target.value)}
-          onSearch={() => {
-            setPagination((prev) => ({ ...prev, current: 1 }));
-            setSearchMerchantKeyword(merchantKeyword.trim());
-          }}
-          placeholder="搜索商家名或商家 ID"
-          allowClear
-          style={{ width: 240 }}
-        />
+        <div className="admin-room-review__toolbar-left">
+          <Select
+            showSearch
+            allowClear
+            value={filters.hotelName}
+            filterOption={false}
+            options={suggestionOptions.hotelName}
+            placeholder="按酒店名称筛选"
+            style={{ width: 220 }}
+            notFoundContent={suggestionLoading.hotelName ? '加载中...' : '暂无匹配选项'}
+            onChange={(value) => updateFilter('hotelName', value)}
+            onSearch={(value) => scheduleFetchSuggestions('hotelName', value)}
+            onOpenChange={(open) => {
+              if (open) {
+                fetchSuggestions('hotelName');
+              }
+            }}
+          />
+          <Select
+            showSearch
+            allowClear
+            value={filters.roomTypeName}
+            filterOption={false}
+            options={suggestionOptions.roomTypeName}
+            placeholder="按房型筛选"
+            style={{ width: 220 }}
+            notFoundContent={suggestionLoading.roomTypeName ? '加载中...' : '暂无匹配选项'}
+            onChange={(value) => updateFilter('roomTypeName', value)}
+            onSearch={(value) => scheduleFetchSuggestions('roomTypeName', value)}
+            onOpenChange={(open) => {
+              if (open) {
+                fetchSuggestions('roomTypeName');
+              }
+            }}
+          />
+          <Select
+            value={filters.auditStatus}
+            options={roomTypeAuditStatusOptions}
+            style={{ width: 150 }}
+            onChange={(value) => handleStatusFilterChange('auditStatus', value)}
+          />
+          <Select
+            value={filters.saleStatus}
+            options={roomTypeSaleStatusOptions}
+            style={{ width: 150 }}
+            onChange={(value) => handleStatusFilterChange('saleStatus', value)}
+          />
+        </div>
+        <div className="admin-room-review__toolbar-right">
+          <Button icon={<ReloadOutlined />} onClick={handleResetFilters}>重置</Button>
+        </div>
       </div>
 
       <div className="admin-room-review__table-shell">
@@ -319,50 +470,10 @@ export default function RoomTypeReview() {
                 <Tag color={getSaleStatusMeta(detailData.isOnSale, detailData.isForcedOffSale).color}>
                   {getSaleStatusMeta(detailData.isOnSale, detailData.isForcedOffSale).text}
                 </Tag>
-                <Tag>{detailData.merchantName || `商家 #${detailData.merchantUserId}`}</Tag>
+                <Tag>{detailData.hotelName || '--'}</Tag>
               </Space>
 
-              <div className="admin-room-review__detail-grid">
-                <div><strong>房型名称：</strong>{detailData.roomName}</div>
-                <div><strong>床型配置：</strong>{detailData.bedConfig}</div>
-                <div><strong>面积：</strong>{detailData.areaSize} ㎡</div>
-                <div><strong>楼层：</strong>{detailData.floorText}</div>
-                <div><strong>房间数量：</strong>{detailData.roomCount}</div>
-                <div><strong>最多入住：</strong>{detailData.maxGuests} 人</div>
-                <div><strong>销售价：</strong>￥{formatPrice(detailData.salePriceCents)}</div>
-                <div><strong>划线价：</strong>￥{formatPrice(detailData.listPriceCents)}</div>
-              </div>
-
-              <div>
-                <strong>设施标签：</strong>
-                <div className="admin-room-review__tags">
-                  {detailData.facilityTags.length
-                    ? detailData.facilityTags.map((item) => <Tag key={item}>{item}</Tag>)
-                    : <span>暂无设施标签</span>}
-                </div>
-              </div>
-
-              <div>
-                <strong>房型描述：</strong>
-                <p className="admin-room-review__description">{detailData.description || '--'}</p>
-              </div>
-
-              {detailData.auditRemark ? (
-                <div>
-                  <strong>驳回原因：</strong>
-                  <p className="admin-room-review__description admin-room-review__description--danger">{detailData.auditRemark}</p>
-                </div>
-              ) : null}
-
-              {detailData.images.length ? (
-                <Image.PreviewGroup>
-                  <div className="admin-room-review__images">
-                    {detailData.images.map((image) => (
-                      <Image key={image.id} src={getFileUrl(image.filePath)} alt={image.fileName || detailData.roomName} className="admin-room-review__image" />
-                    ))}
-                  </div>
-                </Image.PreviewGroup>
-              ) : <Empty description="暂无房型图片" />}
+              <RoomTypeDetailContent roomType={detailData} roomTypeIdText={detailData.id} />
             </Space>
           )}
         </Spin>

@@ -92,6 +92,7 @@ export default function HotelInfoCore() {
     form,
     activeTab: profileState.activeTab,
     loading: profileState.loading,
+    readOnly: profileState.isReviewing,
     getErrorMessage: getRequestErrorMessage,
   });
 
@@ -135,8 +136,8 @@ export default function HotelInfoCore() {
     <>
       {mapState.mapUnavailableReason ? <Alert type="warning" showIcon title="地图不可用" description={mapState.mapUnavailableReason} style={{ marginBottom: 12 }} /> : null}
       {mapState.mapLoadError ? <Alert type="warning" showIcon title="地图加载失败" description={mapState.mapLoadError} style={{ marginBottom: 12 }} /> : null}
-      {mapState.addressLocateError ? <Alert type="warning" showIcon title="根据地址定位失败" description={mapState.addressLocateError} style={{ marginBottom: 12 }} /> : null}
-      {mapState.pointPickError ? <Alert type="warning" showIcon title="根据地图选点回填地址失败" description={mapState.pointPickError} style={{ marginBottom: 12 }} /> : null}
+      {mapState.addressLocateError ? <Alert type="warning" showIcon title={mapState.addressLocateErrorTitle || '根据地址定位失败'} description={mapState.addressLocateError} style={{ marginBottom: 12 }} /> : null}
+      {mapState.markerResolveError ? <Alert type="warning" showIcon title="拖动地图标记回填地址失败" description={mapState.markerResolveError} style={{ marginBottom: 12 }} /> : null}
     </>
   );
 
@@ -153,9 +154,12 @@ export default function HotelInfoCore() {
     handleCityChange: mapActions.handleCityChange,
     handleDistrictChange: mapActions.handleDistrictChange,
     handleDetailInputChange: mapActions.handleDetailInputChange,
+    handleDetailSearch: mapActions.handleDetailSearch,
+    handleDetailSelect: mapActions.handleDetailSelect,
+    detailAutocompleteOptions: mapState.detailAutocompleteOptions,
+    detailAutocompleteLoading: mapState.detailAutocompleteLoading,
     renderMapAlerts,
     previewMapContainerRef: mapRefs.previewMapContainerRef,
-    handleSaveAddressDraft: mapActions.handleSaveAddressDraft,
     setMapModalOpen: mapActions.setMapModalOpen,
     mapModalOpen: mapState.mapModalOpen,
     modalMapContainerRef: mapRefs.modalMapContainerRef,
@@ -163,7 +167,7 @@ export default function HotelInfoCore() {
     onMapModalAfterOpenChange: mapActions.onMapModalAfterOpenChange,
     mapStatusText: mapState.mapStatusText,
     mapUnavailableReason: mapState.mapUnavailableReason,
-    mapActionDisabled: Boolean(mapState.mapUnavailableReason),
+    mapActionDisabled: Boolean(mapState.mapUnavailableReason || mapState.mapLoadError),
     validatePhone,
     validateEmail,
     MAX_INTRODUCTION_LENGTH,

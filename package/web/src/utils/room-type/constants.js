@@ -22,6 +22,34 @@ export const roomTypeSaleStatusOptions = [
   { label: '已下架', value: 'off' },
 ];
 
+export const roomTypeFieldLabels = {
+  roomName: '房型名称',
+  bedType: '床型',
+  bedWidth: '床宽',
+  bedCount: '床位数量',
+  roomCount: '房间总数',
+  maxGuests: '最多入住',
+  areaSize: '面积（㎡）',
+  bedConfig: '床型配置',
+};
+
+export const roomTypeBedTypeOptions = [
+  '单人床',
+  '双人床',
+  '大床',
+  '特大床',
+  '沙发床',
+  '榻榻米',
+].map((item) => ({
+  label: item,
+  value: item,
+}));
+
+export const roomTypeBedCountOptions = Array.from({ length: 10 }, (_, index) => ({
+  label: `${index + 1}`,
+  value: index + 1,
+}));
+
 export const roomTypeAuditStatusMap = {
   draft: { text: '未提交', color: 'default' },
   [ROOM_TYPE_AUDIT_STATUS.PENDING]: { text: '审核中', color: 'gold' },
@@ -35,16 +63,16 @@ export const roomTypeSaleStatusMap = {
 };
 
 export const maxRoomTypeImageCount = 12;
-const roomTypeFloorTextPattern = /^(\d+)(?:-(\d+))?层$/;
+const roomTypeBedConfigPattern = /^(\d+)\s*张\s*([0-9]+(?:\.[0-9]+)?)\s*m\s*(.+)$/;
+const roomTypeBedTypeValues = new Set(roomTypeBedTypeOptions.map((item) => item.value));
 
 export const emptyRoomTypeFormValues = {
   roomName: '',
   bedConfig: '',
+  bedType: undefined,
+  bedWidth: null,
+  bedCount: null,
   areaSize: null,
-  floorText: '',
-  floorStart: null,
-  floorEnd: null,
-  roomCount: 1,
   maxGuests: 2,
   description: '',
   facilityTags: [],
@@ -52,122 +80,96 @@ export const emptyRoomTypeFormValues = {
   listPrice: null,
 };
 
-export const normalizeHotelFloorInfo = (hotelFloorInfo) => {
-  const totalFloorCount = Number(hotelFloorInfo?.totalFloorCount);
-  if (!Number.isInteger(totalFloorCount) || totalFloorCount <= 0) {
-    return {
-      totalFloorCount: 0,
-      floors: [],
-    };
-  }
-
-  return {
-    totalFloorCount,
-    floors: Array.from({ length: totalFloorCount }, (_, index) => `${index + 1}层`),
-  };
-};
-
-export const hasHotelFloorInfo = (hotelFloorInfo) => normalizeHotelFloorInfo(hotelFloorInfo).totalFloorCount > 0;
-
-export const getHotelFloorOptions = (hotelFloorInfo, minFloor = 1) => {
-  const normalized = normalizeHotelFloorInfo(hotelFloorInfo);
-  if (!normalized.totalFloorCount || minFloor > normalized.totalFloorCount) {
-    return [];
-  }
-
-  return Array.from({ length: normalized.totalFloorCount - minFloor + 1 }, (_, index) => {
-    const floorNumber = minFloor + index;
-    return {
-      value: floorNumber,
-      label: `${floorNumber}层`,
-    };
-  });
-};
-
-export const buildRoomTypeFloorText = (floorStart, floorEnd) => {
-  const start = Number(floorStart);
-  const end = Number(floorEnd ?? floorStart);
-  if (!Number.isInteger(start) || !Number.isInteger(end) || start <= 0 || end < start) {
+const formatRoomTypeBedWidth = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
     return '';
   }
 
-  return start === end ? `${start}层` : `${start}-${end}层`;
+  return numericValue.toString();
 };
 
-export const parseRoomTypeFloorText = (floorText) => {
-  const text = String(floorText || '').trim();
+export const buildRoomTypeBedConfig = (bedType, bedWidth, bedCount) => {
+  const normalizedBedType = String(bedType || '').trim();
+  const normalizedBedWidth = formatRoomTypeBedWidth(bedWidth);
+  const normalizedBedCount = Number(bedCount);
+  if (
+    !normalizedBedType
+    || !roomTypeBedTypeValues.has(normalizedBedType)
+    || !normalizedBedWidth
+    || !Number.isInteger(normalizedBedCount)
+    || normalizedBedCount <= 0
+  ) {
+    return '';
+  }
+
+  return `${normalizedBedCount} 张 ${normalizedBedWidth}m ${normalizedBedType}`;
+};
+
+export const parseRoomTypeBedConfig = (bedConfig) => {
+  const text = String(bedConfig || '').trim();
   if (!text) {
     return null;
   }
 
-  const match = text.match(roomTypeFloorTextPattern);
+  const match = text.match(roomTypeBedConfigPattern);
   if (!match) {
     return null;
   }
 
-  const floorStart = Number(match[1]);
-  const floorEnd = Number(match[2] || match[1]);
-  if (!Number.isInteger(floorStart) || !Number.isInteger(floorEnd) || floorStart <= 0 || floorEnd < floorStart) {
+  const bedCount = Number(match[1]);
+  const bedWidth = Number(match[2]);
+  const bedType = String(match[3] || '').trim();
+  if (
+    !Number.isInteger(bedCount)
+    || bedCount <= 0
+    || !Number.isFinite(bedWidth)
+    || bedWidth <= 0
+    || !roomTypeBedTypeValues.has(bedType)
+  ) {
     return null;
   }
 
   return {
-    floorStart,
-    floorEnd,
-    floorText: buildRoomTypeFloorText(floorStart, floorEnd),
+    bedType,
+    bedWidth,
+    bedCount,
+    bedConfig: buildRoomTypeBedConfig(bedType, bedWidth, bedCount),
   };
 };
 
-export const resolveRoomTypeFloorSelection = (floorText, hotelFloorInfo) => {
-  const originalFloorText = String(floorText || '').trim();
-  if (!originalFloorText) {
+export const resolveRoomTypeBedConfigSelection = (bedConfig) => {
+  const originalBedConfig = String(bedConfig || '').trim();
+  if (!originalBedConfig) {
     return {
-      floorStart: null,
-      floorEnd: null,
+      bedType: undefined,
+      bedWidth: null,
+      bedCount: null,
       isInvalid: false,
       invalidMessage: '',
-      originalFloorText: '',
+      originalBedConfig: '',
     };
   }
 
-  const parsedFloor = parseRoomTypeFloorText(originalFloorText);
-  if (!parsedFloor) {
+  const parsedBedConfig = parseRoomTypeBedConfig(originalBedConfig);
+  if (!parsedBedConfig) {
     return {
-      floorStart: null,
-      floorEnd: null,
+      bedType: undefined,
+      bedWidth: null,
+      bedCount: null,
       isInvalid: true,
-      invalidMessage: '当前楼层说明格式不受支持，请重新选择。',
-      originalFloorText,
-    };
-  }
-
-  const normalizedHotelFloorInfo = normalizeHotelFloorInfo(hotelFloorInfo);
-  if (!normalizedHotelFloorInfo.totalFloorCount) {
-    return {
-      floorStart: null,
-      floorEnd: null,
-      isInvalid: true,
-      invalidMessage: '请先在酒店资料中完善总楼层。',
-      originalFloorText,
-    };
-  }
-
-  if (parsedFloor.floorEnd > normalizedHotelFloorInfo.totalFloorCount) {
-    return {
-      floorStart: null,
-      floorEnd: null,
-      isInvalid: true,
-      invalidMessage: `当前楼层区间已超出酒店总楼层（${normalizedHotelFloorInfo.totalFloorCount}层），请重新选择。`,
-      originalFloorText,
+      invalidMessage: '当前床型配置格式不受支持，请重新选择。',
+      originalBedConfig,
     };
   }
 
   return {
-    floorStart: parsedFloor.floorStart,
-    floorEnd: parsedFloor.floorEnd,
+    bedType: parsedBedConfig.bedType,
+    bedWidth: parsedBedConfig.bedWidth,
+    bedCount: parsedBedConfig.bedCount,
     isInvalid: false,
     invalidMessage: '',
-    originalFloorText,
+    originalBedConfig,
   };
 };
 
@@ -235,7 +237,6 @@ export const applyRoomTypeDraftOverlay = (roomType, draft) => {
     : {};
   const draftImages = Array.isArray(draft?.images) ? draft.images : [];
   const hasDraftImages = draftImages.length > 0;
-  const floorText = buildRoomTypeFloorText(formValues.floorStart, formValues.floorEnd) || String(formValues.floorText || '').trim();
   const salePrice = toNullableNumber(formValues.salePrice);
   const listPrice = toNullableNumber(formValues.listPrice);
 
@@ -244,8 +245,6 @@ export const applyRoomTypeDraftOverlay = (roomType, draft) => {
     roomName: typeof formValues.roomName === 'string' ? formValues.roomName : roomType.roomName,
     bedConfig: typeof formValues.bedConfig === 'string' ? formValues.bedConfig : roomType.bedConfig,
     areaSize: toNullableNumber(formValues.areaSize) ?? roomType.areaSize,
-    floorText: floorText || roomType.floorText,
-    roomCount: Number.isInteger(Number(formValues.roomCount)) ? Number(formValues.roomCount) : roomType.roomCount,
     maxGuests: Number.isInteger(Number(formValues.maxGuests)) ? Number(formValues.maxGuests) : roomType.maxGuests,
     description: typeof formValues.description === 'string' ? formValues.description : roomType.description,
     facilityTags: Array.isArray(formValues.facilityTags) ? formValues.facilityTags : roomType.facilityTags,
@@ -269,7 +268,6 @@ export const buildCreateRoomTypeDraftRecord = (draft) => {
     ? draft.formValues
     : {};
   const draftImages = Array.isArray(draft?.images) ? draft.images : [];
-  const floorText = buildRoomTypeFloorText(formValues.floorStart, formValues.floorEnd) || String(formValues.floorText || '').trim();
   const salePrice = toNullableNumber(formValues.salePrice);
   const listPrice = toNullableNumber(formValues.listPrice);
 
@@ -280,8 +278,7 @@ export const buildCreateRoomTypeDraftRecord = (draft) => {
     roomName: typeof formValues.roomName === 'string' && formValues.roomName.trim() ? formValues.roomName : '未命名草稿房型',
     bedConfig: typeof formValues.bedConfig === 'string' ? formValues.bedConfig : '',
     areaSize: toNullableNumber(formValues.areaSize),
-    floorText,
-    roomCount: Number.isInteger(Number(formValues.roomCount)) ? Number(formValues.roomCount) : 1,
+    roomCount: 0,
     maxGuests: Number.isInteger(Number(formValues.maxGuests)) ? Number(formValues.maxGuests) : 1,
     description: typeof formValues.description === 'string' ? formValues.description : '',
     facilityTags: Array.isArray(formValues.facilityTags) ? formValues.facilityTags : [],
@@ -329,19 +326,17 @@ export const formatPrice = (cents) => {
   return amount.toFixed(2);
 };
 
-export const normalizeRoomTypeFormValues = (detail, hotelFloorInfo = null) => {
-  const nextFloorText = buildRoomTypeFloorText(detail?.floorStart, detail?.floorEnd) || detail?.floorText || '';
-  const floorSelection = resolveRoomTypeFloorSelection(nextFloorText, hotelFloorInfo);
+export const normalizeRoomTypeFormValues = (detail) => {
+  const bedConfigSelection = resolveRoomTypeBedConfigSelection(detail?.bedConfig);
 
   return {
     ...emptyRoomTypeFormValues,
     roomName: detail?.roomName || '',
     bedConfig: detail?.bedConfig || '',
+    bedType: bedConfigSelection.bedType,
+    bedWidth: bedConfigSelection.bedWidth,
+    bedCount: bedConfigSelection.bedCount,
     areaSize: detail?.areaSize ?? null,
-    floorText: nextFloorText,
-    floorStart: floorSelection.floorStart,
-    floorEnd: floorSelection.floorEnd,
-    roomCount: detail?.roomCount || 1,
     maxGuests: detail?.maxGuests || 1,
     description: detail?.description || '',
     facilityTags: Array.isArray(detail?.facilityTags) ? detail.facilityTags : [],
@@ -368,9 +363,23 @@ export const getMerchantRoomTypeQuery = ({ auditStatus, saleStatus, keyword, pag
   pageSize,
 });
 
-export const getAdminRoomTypeQuery = ({ auditStatus, saleStatus, keyword, merchantKeyword, page, pageSize }) => ({
-  ...getMerchantRoomTypeQuery({ auditStatus, saleStatus, keyword, page, pageSize }),
-  merchantKeyword: merchantKeyword || undefined,
+export const getAdminRoomTypeQuery = ({ auditStatus, saleStatus, hotelName, roomTypeName, page, pageSize }) => ({
+  auditStatus: auditStatus === 'all'
+    ? undefined
+    : auditStatus === 'pending'
+      ? ROOM_TYPE_AUDIT_STATUS.PENDING
+      : auditStatus === 'approved'
+        ? ROOM_TYPE_AUDIT_STATUS.APPROVED
+        : ROOM_TYPE_AUDIT_STATUS.REJECTED,
+  saleStatus: saleStatus === 'all'
+    ? undefined
+    : saleStatus === 'on'
+      ? ROOM_TYPE_SALE_STATUS.ON
+      : ROOM_TYPE_SALE_STATUS.OFF,
+  hotelName: hotelName || undefined,
+  roomTypeName: roomTypeName || undefined,
+  page,
+  pageSize,
 });
 
 export const getRoomTypeEditNotice = (detail) => {

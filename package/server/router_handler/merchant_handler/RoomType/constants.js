@@ -14,7 +14,6 @@ const onSaleStatusList = [0, 1];
 
 const maxRoomNameLength = 60;
 const maxBedConfigLength = 100;
-const maxFloorTextLength = 60;
 const maxDescriptionLength = 2000;
 const maxFacilityTagCount = 20;
 const maxFacilityTagLength = 30;
@@ -26,7 +25,6 @@ module.exports = {
   onSaleStatusList,
   maxRoomNameLength,
   maxBedConfigLength,
-  maxFloorTextLength,
   maxDescriptionLength,
   maxFacilityTagCount,
   maxFacilityTagLength,

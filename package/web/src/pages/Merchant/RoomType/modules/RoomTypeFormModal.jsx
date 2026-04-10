@@ -7,7 +7,6 @@ import {
   Form,
   Image,
   Input,
-  InputNumber,
   Row,
   Select,
   Spin,
@@ -16,9 +15,10 @@ import {
 import { PlusOutlined } from '@ant-design/icons';
 import CompactNumberInput from '../../../../components/CompactNumberInput';
 import {
-  getHotelFloorOptions,
-  hasHotelFloorInfo,
   maxRoomTypeImageCount,
+  roomTypeBedCountOptions,
+  roomTypeBedTypeOptions,
+  roomTypeFieldLabels,
 } from '../../../../utils/room-type';
 
 const { TextArea } = Input;
@@ -40,23 +40,17 @@ export default function RoomTypeFormModal({
   statusNotice,
   editLocked,
   submitDisabled,
-  hotelFloorInfo,
-  floorSelectionIssue,
+  bedConfigIssue,
   hotelFacilityOptions,
   facilityTagIssue,
   onClose,
   onBeforeUpload,
   onRemoveImage,
-  onFloorStartChange,
   onSaveDraft,
   onSubmit,
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
-  const floorStart = Form.useWatch('floorStart', form);
-  const hotelFloorReady = hasHotelFloorInfo(hotelFloorInfo);
-  const floorStartOptions = getHotelFloorOptions(hotelFloorInfo);
-  const floorEndOptions = getHotelFloorOptions(hotelFloorInfo, Number.isInteger(Number(floorStart)) ? Number(floorStart) : 1);
 
   const uploadButton = (
     <button type="button" className="room-type__upload-trigger">
@@ -95,85 +89,47 @@ export default function RoomTypeFormModal({
               <Card className="room-type__modal-card" title="基础设置">
                 <Row gutter={16}>
                   <Col xs={24} md={12}>
-                    <Form.Item label="房型名称" name="roomName" rules={[{ required: true, message: '请输入房型名称' }]}>
+                    <Form.Item label={roomTypeFieldLabels.roomName} name="roomName" rules={[{ required: true, message: `请输入${roomTypeFieldLabels.roomName}` }]}>
                       <Input maxLength={60} placeholder="例如：豪华大床房" />
                     </Form.Item>
                   </Col>
                   <Col xs={24} md={12}>
-                    <Form.Item label="床型配置" name="bedConfig" rules={[{ required: true, message: '请输入床型配置' }]}>
-                      <Input maxLength={100} placeholder="例如：1 张 2m 大床" />
+                    <Form.Item label={roomTypeFieldLabels.areaSize} name="areaSize" rules={[{ required: true, message: '请输入房间面积' }]}>
+                      <CompactNumberInput min={1} precision={2} addon="㎡" placeholder="请输入房间面积" />
                     </Form.Item>
                   </Col>
                 </Row>
               </Card>
 
               <Card className="room-type__modal-card" title="布局接待">
-                {!hotelFloorReady ? (
+                {bedConfigIssue?.message ? (
                   <Alert
                     type="warning"
                     showIcon
-                    title="请先在酒店资料中完善总楼层"
-                    className="room-type__modal-alert"
-                  />
-                ) : null}
-                {floorSelectionIssue?.message ? (
-                  <Alert
-                    type="warning"
-                    showIcon
-                    title="当前楼层说明需要重新选择"
-                    description={floorSelectionIssue.floorText ? `当前楼层说明：${floorSelectionIssue.floorText}。${floorSelectionIssue.message}` : floorSelectionIssue.message}
+                    title="当前床型配置需要重新选择"
+                    description={bedConfigIssue.bedConfig ? `当前床型配置：${bedConfigIssue.bedConfig}。${bedConfigIssue.message}` : bedConfigIssue.message}
                     className="room-type__modal-alert"
                   />
                 ) : null}
                 <Row gutter={16}>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="面积（㎡）" name="areaSize" rules={[{ required: true, message: '请输入房间面积' }]}>
-                      <CompactNumberInput min={1} precision={2} addon="㎡" />
+                  <Col xs={24} md={6}>
+                    <Form.Item label={roomTypeFieldLabels.bedType} name="bedType" rules={[{ required: true, message: `请选择${roomTypeFieldLabels.bedType}` }]}>
+                      <Select options={roomTypeBedTypeOptions} placeholder={`请选择${roomTypeFieldLabels.bedType}`} />
                     </Form.Item>
                   </Col>
-                  <Col xs={24} md={8}>
-                    <Form.Item label="楼层说明" style={{ marginBottom: 0 }}>
-                      <div className="room-type__floor-picker">
-                        <div className="room-type__floor-picker-item">
-                          <span className="room-type__floor-picker-label">起始层</span>
-                          <Form.Item
-                            name="floorStart"
-                            rules={hotelFloorReady ? [{ required: true, message: '请选择起始楼层' }] : []}
-                          >
-                            <Select
-                              options={floorStartOptions}
-                              placeholder="请选择"
-                              disabled={!hotelFloorReady}
-                              onChange={onFloorStartChange}
-                              allowClear
-                            />
-                          </Form.Item>
-                        </div>
-                        <div className="room-type__floor-picker-item">
-                          <span className="room-type__floor-picker-label">结束层</span>
-                          <Form.Item
-                            name="floorEnd"
-                            rules={hotelFloorReady ? [{ required: true, message: '请选择结束楼层' }] : []}
-                          >
-                            <Select
-                              options={floorEndOptions}
-                              placeholder="请选择"
-                              disabled={!hotelFloorReady || !floorStart}
-                              allowClear
-                            />
-                          </Form.Item>
-                        </div>
-                      </div>
+                  <Col xs={24} md={6}>
+                    <Form.Item label={roomTypeFieldLabels.bedWidth} name="bedWidth" rules={[{ required: true, message: `请输入${roomTypeFieldLabels.bedWidth}` }]}>
+                      <CompactNumberInput min={0.1} precision={2} step={0.1} addon="m" placeholder={`请输入${roomTypeFieldLabels.bedWidth}`} />
                     </Form.Item>
                   </Col>
-                  <Col xs={24} md={4}>
-                    <Form.Item label="房间数量" name="roomCount" rules={[{ required: true, message: '请输入房间数量' }]}>
-                      <InputNumber min={1} precision={0} style={{ width: '100%' }} />
+                  <Col xs={24} md={6}>
+                    <Form.Item label={roomTypeFieldLabels.bedCount} name="bedCount" rules={[{ required: true, message: `请选择${roomTypeFieldLabels.bedCount}` }]}>
+                      <Select options={roomTypeBedCountOptions} placeholder={`请选择${roomTypeFieldLabels.bedCount}`} />
                     </Form.Item>
                   </Col>
-                  <Col xs={24} md={4}>
-                    <Form.Item label="最多入住" name="maxGuests" rules={[{ required: true, message: '请输入最多入住人数' }]}>
-                      <CompactNumberInput min={1} precision={0} addon="人" />
+                  <Col xs={24} md={6}>
+                    <Form.Item label={roomTypeFieldLabels.maxGuests} name="maxGuests" rules={[{ required: true, message: '请输入最多入住人数' }]}>
+                      <CompactNumberInput min={1} precision={0} addon="人" placeholder="请输入最多入住人数" />
                     </Form.Item>
                   </Col>
                 </Row>

@@ -349,12 +349,20 @@ export default function useRoomTypeList({ merchantUserId } = {}) {
     setSearchDropdownOpen(false);
   }, [clearBlurTimer, clearSuggestionTimer]);
 
-  const handlePageChange = useCallback((page, pageSize) => {
+  const handlePageChange = useCallback((page) => {
     setSelectedIds([]);
     setPagination((prev) => ({
       ...prev,
       current: page,
-      pageSize,
+    }));
+  }, []);
+
+  const handlePageSizeChange = useCallback((_current, nextPageSize) => {
+    setSelectedIds([]);
+    setPagination((prev) => ({
+      ...prev,
+      current: 1,
+      pageSize: nextPageSize,
     }));
   }, []);
 
@@ -560,6 +568,7 @@ export default function useRoomTypeList({ merchantUserId } = {}) {
       handleSearchBlur,
       handleSelectSuggestion,
       handlePageChange,
+      handlePageSizeChange,
       toggleSelect,
       clearSelection,
       handleToggleSale,

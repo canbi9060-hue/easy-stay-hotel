@@ -86,7 +86,7 @@ export default function DetailContent({ hotel }) {
           </Descriptions.Item>
           <Descriptions.Item label="入住时间">{hotel.operationRules?.checkInTime || '--'}</Descriptions.Item>
           <Descriptions.Item label="退房时间">{hotel.operationRules?.checkOutTime || '--'}</Descriptions.Item>
-          <Descriptions.Item label="总楼层">
+          <Descriptions.Item label="总楼层" span={2}>
             {hotel.floorInfo?.totalFloorCount ? `${hotel.floorInfo.totalFloorCount}层` : '--'}
           </Descriptions.Item>
         </Descriptions>

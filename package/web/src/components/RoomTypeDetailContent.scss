@@ -1,0 +1,30 @@
+.room-type-detail-content__title {
+  margin-bottom: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #20334d;
+}
+
+.room-type-detail-content__images {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.room-type-detail-content__image {
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+@media (max-width: 992px) {
+  .room-type-detail-content__images {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .room-type-detail-content__images {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

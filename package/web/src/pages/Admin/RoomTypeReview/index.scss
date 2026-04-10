@@ -17,11 +17,29 @@
 
 .admin-room-review__toolbar {
   display: flex;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
   flex-wrap: wrap;
+  row-gap: 12px;
+  column-gap: 12px;
   padding: 18px;
   border-radius: 18px;
   background: #f7fafe;
+}
+
+.admin-room-review__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.admin-room-review__toolbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: auto;
 }
 
 .admin-room-review__table-shell {
@@ -42,35 +60,8 @@
   color: #7f90a7;
 }
 
-.admin-room-review__detail-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 18px;
-}
-
 .admin-room-review__tags {
   margin-top: 10px;
-}
-
-.admin-room-review__description {
-  margin: 8px 0 0;
-  line-height: 1.7;
-  color: #465a74;
-}
-
-.admin-room-review__description--danger {
-  color: #cf1322;
-}
-
-.admin-room-review__images {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.admin-room-review__image {
-  width: 100%;
-  border-radius: 16px;
 }
 
 .admin-room-review__empty {
@@ -84,8 +75,9 @@
 }
 
 @media (max-width: 768px) {
-  .admin-room-review__detail-grid,
-  .admin-room-review__images {
-    grid-template-columns: minmax(0, 1fr);
+  .admin-room-review__toolbar-right {
+    width: 100%;
+    justify-content: flex-start;
+    margin-left: 0;
   }
 }

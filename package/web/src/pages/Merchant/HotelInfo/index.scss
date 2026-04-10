@@ -184,22 +184,6 @@
   z-index: 12;
 }
 
-.hotel-info__map-save {
-  position: absolute;
-  right: 18px;
-  top: 18px;
-  border-radius: 999px;
-  box-shadow: 0 10px 18px rgba(24, 38, 61, 0.12);
-  z-index: 12;
-}
-
-.hotel-info__map-preview .amap-toolbar,
-.hotel-info__map-modal .amap-toolbar {
-  bottom: 86px !important;
-  right: 18px !important;
-  z-index: 11 !important;
-}
-
 .hotel-info__map-loading {
   position: absolute;
   left: 18px;
@@ -220,6 +204,13 @@
   border: 1px dashed #d9e4f1;
   border-radius: 20px;
   background: #f8fbff;
+}
+
+.hotel-info__map-empty--preview {
+  min-height: 280px;
+  border: none;
+  border-radius: 20px;
+  background: rgba(248, 251, 255, 0.96);
 }
 
 .hotel-info__map-empty-content {
@@ -516,20 +507,9 @@
     white-space: nowrap;
   }
 
-  .hotel-info__map-save {
-    top: 12px;
-    right: 12px;
-  }
-
   .hotel-info__map-expand {
     right: 12px;
     bottom: 12px;
-  }
-
-  .hotel-info__map-preview .amap-toolbar,
-  .hotel-info__map-modal .amap-toolbar {
-    bottom: 72px !important;
-    right: 12px !important;
   }
 
   .hotel-info__map-loading {

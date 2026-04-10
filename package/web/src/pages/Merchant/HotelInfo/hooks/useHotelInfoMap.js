@@ -1,88 +1,74 @@
-import { Form, message, Modal } from 'antd';
+import { Form, message } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   amapJsKey,
-  amapWebKey,
+  DEFAULT_COUNTRY,
   destroyMapInstance,
   emptyHotelProfile,
   fetchDistrictOptions,
+  fetchMerchantMapGeocode,
+  fetchMerchantMapInitialLocation,
+  fetchMerchantMapRegeocode,
+  formatAddressText,
+  getMapDisplayErrorMessage,
   loadAmapScript,
-  locateByAddressInput,
-  prefillAddressByIP,
+  normalizeCoordinates,
   renderMapInstance,
-  resolveAddressFromPoint,
+  searchAddressSuggestions,
 } from '../../../../utils/hotel-info';
 
-const addressDraftStorageKey = 'merchant_hotel_address_draft';
-const defaultCenterCoordinates = { longitude: 116.397428, latitude: 39.90923 };
+const defaultLocateErrorTitle = '根据地址定位失败';
 
-const isDefaultCenterCoordinates = (coordinates) => {
-  if (!coordinates) return false;
-  const latitude = Number(coordinates.latitude);
-  const longitude = Number(coordinates.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+const getDetailText = (address) =>
+  String(address?.detail || '').trim();
+
+const isSameCoordinates = (left, right) => {
+  const first = normalizeCoordinates(left);
+  const second = normalizeCoordinates(right);
+
+  if (!first && !second) {
+    return true;
+  }
+
+  if (!first || !second) {
+    return false;
+  }
+
   return (
-    Math.abs(latitude - defaultCenterCoordinates.latitude) < 0.000001 &&
-    Math.abs(longitude - defaultCenterCoordinates.longitude) < 0.000001
+    Math.abs(first.longitude - second.longitude) < 0.000001 &&
+    Math.abs(first.latitude - second.latitude) < 0.000001
   );
 };
 
-const getValidCoordinates = (address) => {
-  const latitude = Number(address?.latitude);
-  const longitude = Number(address?.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-  return { latitude, longitude };
-};
-
-const getDeepestRegionKeyword = (address) => address?.district || address?.city || address?.province || '';
-
-const hasAddressTextInput = (address) => {
-  const detail = typeof address?.detail === 'string' ? address.detail.trim() : '';
-  return Boolean(getDeepestRegionKeyword(address) || detail);
-};
-
-const getOptionCoordinates = (options, value) => {
+const getOptionCenter = (options, value) => {
   if (!Array.isArray(options) || !value) {
     return null;
   }
-  const matched = options.find((item) => item?.value === value);
-  const latitude = Number(matched?.center?.latitude);
-  const longitude = Number(matched?.center?.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-    return null;
-  }
-  return { latitude, longitude };
+
+  return normalizeCoordinates(options.find((item) => item?.value === value)?.center);
 };
 
-const createRestoreAddressDraftPrompt = (draft) => new Promise((resolve) => {
-  let settled = false;
-  const finish = (value) => {
-    if (settled) return;
-    settled = true;
-    resolve(value);
-  };
+const buildAddressFromLocation = (location, fallbackAddress = emptyHotelProfile.address, { markManual = false } = {}) => {
+  const coordinates = normalizeCoordinates(location);
 
-  const savedAtText = draft?.savedAt
-    ? new Date(draft.savedAt).toLocaleString()
-    : '';
-  Modal.confirm({
-    title: '发现定位草稿',
-    content: savedAtText
-      ? `检测到 ${savedAtText} 暂存的定位草稿，是否恢复？`
-      : '检测到未提交的定位草稿，是否恢复？',
-    okText: '恢复草稿',
-    cancelText: '丢弃草稿',
-    onOk: () => finish(true),
-    onCancel: () => finish(false),
-  });
-});
+  return {
+    ...fallbackAddress,
+    country: String(location?.country || fallbackAddress.country || DEFAULT_COUNTRY).trim() || DEFAULT_COUNTRY,
+    province: String(location?.province || '').trim(),
+    city: String(location?.city || '').trim(),
+    district: String(location?.district || '').trim(),
+    detail: String(location?.detail || '').trim(),
+    latitude: coordinates?.latitude ?? null,
+    longitude: coordinates?.longitude ?? null,
+    isManualLocation: markManual || Boolean(fallbackAddress?.isManualLocation),
+  };
+};
 
 export default function useHotelInfoMap({
   form,
   activeTab,
   loading,
+  readOnly,
   getErrorMessage,
 }) {
   const [provinceOptions, setProvinceOptions] = useState([]);
@@ -90,483 +76,594 @@ export default function useHotelInfoMap({
   const [districtOptions, setDistrictOptions] = useState([]);
   const [regionLoading, setRegionLoading] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  const [mapModalOpen, setMapModalOpen] = useState(false);
   const [mapLoadError, setMapLoadError] = useState('');
-  const [addressLocateError, setAddressLocateError] = useState('');
-  const [pointPickError, setPointPickError] = useState('');
+  const [mapModalOpen, setMapModalOpen] = useState(false);
   const [mapStatusText, setMapStatusText] = useState('');
-  const [initialCoordinates, setInitialCoordinates] = useState(null);
+  const [addressLocateErrorTitle, setAddressLocateErrorTitle] = useState(defaultLocateErrorTitle);
+  const [addressLocateError, setAddressLocateError] = useState('');
+  const [markerResolveError, setMarkerResolveError] = useState('');
+  const [detailAutocompleteOptions, setDetailAutocompleteOptions] = useState([]);
+  const [detailAutocompleteLoading, setDetailAutocompleteLoading] = useState(false);
+  const [displayCoordinates, setDisplayCoordinates] = useState(null);
 
   const previewMapContainerRef = useRef(null);
   const previewMapRef = useRef(null);
   const previewMarkerRef = useRef(null);
-  const previewClickHandlerRef = useRef(null);
   const previewDragHandlerRef = useRef(null);
   const modalMapContainerRef = useRef(null);
   const modalMapRef = useRef(null);
   const modalMarkerRef = useRef(null);
-  const modalClickHandlerRef = useRef(null);
   const modalDragHandlerRef = useRef(null);
-  const updateSourceRef = useRef('idle');
-  const ipLocateTriedRef = useRef(false);
-  const locateRequestIdRef = useRef(0);
-  const pointPickRequestIdRef = useRef(0);
-  const draftRestoredRef = useRef(false);
-  const hasManualSelectionRef = useRef(false);
+  const initDoneRef = useRef(false);
+  const regionLoadingCountRef = useRef(0);
+  const autocompleteRequestIdRef = useRef(0);
+  const geocodeRequestIdRef = useRef(0);
+  const markerRequestIdRef = useRef(0);
 
   const addressValue = Form.useWatch(['address'], form) || emptyHotelProfile.address;
-  const detailValue = Form.useWatch(['address', 'detail'], form);
-
-  const previewBindings = useMemo(
-    () => ({ mapRef: previewMapRef, markerRef: previewMarkerRef, clickHandlerRef: previewClickHandlerRef, dragHandlerRef: previewDragHandlerRef }),
-    []
-  );
-  const modalBindings = useMemo(
-    () => ({ mapRef: modalMapRef, markerRef: modalMarkerRef, clickHandlerRef: modalClickHandlerRef, dragHandlerRef: modalDragHandlerRef }),
-    []
+  const committedCoordinates = useMemo(
+    () => normalizeCoordinates(addressValue),
+    [addressValue]
   );
 
-  const addressTextInput = useMemo(() => hasAddressTextInput(addressValue), [addressValue]);
-  const currentCoordinates = useMemo(() => {
-    const coordinates = getValidCoordinates(addressValue);
-    if (!coordinates) return null;
-    if (!addressTextInput && !hasManualSelectionRef.current) {
-      return null;
-    }
-    if (isDefaultCenterCoordinates(coordinates) && !addressTextInput && !hasManualSelectionRef.current) {
-      return null;
-    }
-    return coordinates;
-  }, [addressTextInput, addressValue]);
-  const displayCoordinates = currentCoordinates || initialCoordinates;
-
-  const mapUnavailableReason = (!amapJsKey || !amapWebKey)
-    ? '地图不可用：请在 .env 中配置 REACT_APP_AMAP_JS_KEY 和 REACT_APP_AMAP_WEB_KEY，并重启应用。'
+  const mapUnavailableReason = !amapJsKey
+    ? '地图不可用：请在 .env 中配置 REACT_APP_AMAP_JS_KEY，并重启应用。'
     : '';
 
-  const syncRegionOptionsFromAddress = useCallback(async (address) => {
-    try {
-      if (address?.province) setCityOptions(await fetchDistrictOptions(amapWebKey, address.province));
-      else setCityOptions([]);
-    } catch (error) {
-      setCityOptions([]);
-    }
-    try {
-      if (address?.city) setDistrictOptions(await fetchDistrictOptions(amapWebKey, address.city));
-      else setDistrictOptions([]);
-    } catch (error) {
-      setDistrictOptions([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (loading) return;
-    const currentAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-    syncRegionOptionsFromAddress(currentAddress);
-  }, [form, loading, syncRegionOptionsFromAddress]);
-
-  const saveAddressDraftToSession = useCallback((address, { silent = true, mode = 'manual' } = {}) => {
-    try {
-      const coordinates = getValidCoordinates(address);
-      const detail = typeof address?.detail === 'string' ? address.detail.trim() : '';
-      const regionKeyword = getDeepestRegionKeyword(address);
-      const hasMeaningfulCoordinates = coordinates && !isDefaultCenterCoordinates(coordinates);
-
-      if (mode === 'manual' && !regionKeyword && !detail && !hasMeaningfulCoordinates) {
-        if (!silent) {
-          message.warning('请先选择有效定位后再暂存。');
-        }
-        return false;
-      }
-
-      const payload = {
-        mode,
-        savedAt: Date.now(),
-        address: {
-          country: address?.country || emptyHotelProfile.address.country,
-          province: address?.province || '',
-          city: address?.city || '',
-          district: address?.district || '',
-          detail: address?.detail || '',
-          latitude: hasMeaningfulCoordinates ? coordinates?.latitude : null,
-          longitude: hasMeaningfulCoordinates ? coordinates?.longitude : null,
-        },
-      };
-      window.sessionStorage.setItem(addressDraftStorageKey, JSON.stringify(payload));
-      if (!silent) {
-        message.success('已暂存当前定位，稍后可继续编辑。');
-      }
-      return true;
-    } catch (error) {
-      if (!silent) {
-        message.warning('暂存定位失败，请稍后重试。');
-      }
-      return false;
-    }
-  }, []);
-
-  const restoreAddressDraftFromSession = useCallback(async () => {
-    if (draftRestoredRef.current) return;
-    draftRestoredRef.current = true;
-    try {
-      const rawDraft = window.sessionStorage.getItem(addressDraftStorageKey);
-      if (!rawDraft) return;
-      const parsedDraft = JSON.parse(rawDraft);
-      if (parsedDraft?.mode !== 'manual') {
-        window.sessionStorage.removeItem(addressDraftStorageKey);
-        return;
-      }
-      const draftAddress = parsedDraft?.address;
-      if (!draftAddress || typeof draftAddress !== 'object') return;
-
-      const currentAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-      const draftCoordinates = getValidCoordinates(draftAddress);
-      const draftDetailText = typeof draftAddress?.detail === 'string' ? draftAddress.detail.trim() : '';
-      const draftHasAddressIntent = Boolean(getDeepestRegionKeyword(draftAddress) || draftDetailText);
-      const draftHasMeaningfulCoordinates =
-        Boolean(draftCoordinates) &&
-        (!isDefaultCenterCoordinates(draftCoordinates) || draftHasAddressIntent);
-      if (!draftHasAddressIntent && !draftHasMeaningfulCoordinates) {
-        window.sessionStorage.removeItem(addressDraftStorageKey);
-        return;
-      }
-
-      const shouldRestore = await createRestoreAddressDraftPrompt(parsedDraft);
-      if (!shouldRestore) {
-        window.sessionStorage.removeItem(addressDraftStorageKey);
-        return;
-      }
-
-      const mergedAddress = {
-        ...currentAddress,
-        country: draftAddress.country || currentAddress.country || emptyHotelProfile.address.country,
-        province: draftAddress.province || currentAddress.province,
-        city: draftAddress.city || currentAddress.city,
-        district: draftAddress.district || currentAddress.district,
-        detail: draftAddress.detail || currentAddress.detail,
-        latitude: draftHasMeaningfulCoordinates ? draftCoordinates.latitude : currentAddress.latitude,
-        longitude: draftHasMeaningfulCoordinates ? draftCoordinates.longitude : currentAddress.longitude,
-      };
-      hasManualSelectionRef.current = draftHasMeaningfulCoordinates;
-
-      form.setFieldsValue({ address: mergedAddress });
-      syncRegionOptionsFromAddress(mergedAddress);
-      message.success('已恢复定位草稿。');
-    } catch (error) {
-      // ignore invalid local draft data
-    }
-  }, [form, syncRegionOptionsFromAddress]);
-
-  useEffect(() => {
-    if (loading) return;
-    restoreAddressDraftFromSession();
-  }, [loading, restoreAddressDraftFromSession]);
-
-  const triggerAddressLocate = useCallback(async ({ address } = {}) => {
-    if (!mapReady) return null;
-
-    const targetAddress = address || form.getFieldValue(['address']) || emptyHotelProfile.address;
-    if (!hasAddressTextInput(targetAddress)) return null;
-
-    const requestId = ++locateRequestIdRef.current;
-    setAddressLocateError('');
-    setMapStatusText('正在定位...');
-
-    try {
-      const located = await locateByAddressInput(targetAddress, amapWebKey);
-
-      if (requestId !== locateRequestIdRef.current) return null;
-      if (!located) throw new Error('根据当前地址定位失败。');
-
-      const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-      const nextCoordinates = { latitude: located.latitude, longitude: located.longitude };
-      form.setFieldsValue({ address: { ...latestAddress, ...nextCoordinates } });
-      setInitialCoordinates(nextCoordinates);
-      return located;
-    } catch (error) {
-      if (requestId === locateRequestIdRef.current) {
-        setAddressLocateError(getErrorMessage(error, '定位失败，请检查地址信息。'));
-      }
-      return null;
-    } finally {
-      if (requestId === locateRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 800);
-    }
-  }, [form, getErrorMessage, mapReady]);
-
-  const applyPointSelection = useCallback(async (coordinates) => {
-    hasManualSelectionRef.current = true;
-    const requestId = ++pointPickRequestIdRef.current;
-    setPointPickError('');
-    setAddressLocateError('');
-    setMapStatusText('正在解析地图选点...');
-
-    const baseAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-    setInitialCoordinates(coordinates);
-    form.setFieldsValue({
-      address: {
-        ...baseAddress,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-      },
-    });
-
-    try {
-      const nextAddressInfo = await resolveAddressFromPoint(coordinates, amapWebKey);
-      if (requestId !== pointPickRequestIdRef.current) return;
-      if (!nextAddressInfo) {
-        throw new Error('未能解析当前选点地址。');
-      }
-
-      const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-      const nextAddress = {
-        ...latestAddress,
-        country: nextAddressInfo.country || latestAddress.country || emptyHotelProfile.address.country,
-        province: nextAddressInfo.province || latestAddress.province,
-        city: nextAddressInfo.city || latestAddress.city,
-        district: nextAddressInfo.district || latestAddress.district,
-        detail: nextAddressInfo.detail || latestAddress.detail,
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
-      };
-
-      updateSourceRef.current = 'map';
-      form.setFieldsValue({ address: nextAddress });
-      syncRegionOptionsFromAddress(nextAddress);
-    } catch (error) {
-      if (requestId === pointPickRequestIdRef.current) {
-        setPointPickError(getErrorMessage(error, '根据地图选点回填地址失败。'));
-      }
-    } finally {
-      if (requestId === pointPickRequestIdRef.current) window.setTimeout(() => setMapStatusText(''), 800);
-    }
-  }, [form, getErrorMessage, syncRegionOptionsFromAddress]);
-
-  const resetMapObjects = useCallback(() => {
-    destroyMapInstance(previewBindings);
-    destroyMapInstance(modalBindings);
-  }, [modalBindings, previewBindings]);
-
-  useEffect(() => {
-    if (!amapWebKey) {
-      setProvinceOptions([]);
-      return;
-    }
-    (async () => {
-      try {
-        setRegionLoading(true);
-        setProvinceOptions(await fetchDistrictOptions(amapWebKey, emptyHotelProfile.address.country));
-      } catch (error) {
-        message.warning(getErrorMessage(error, '加载省份选项失败。'));
-      } finally {
-        setRegionLoading(false);
-      }
-    })();
-  }, [getErrorMessage]);
-
-  useEffect(() => {
-    if (!amapJsKey || !amapWebKey) {
-      setMapLoadError('');
-      setMapReady(false);
-      return;
-    }
-    loadAmapScript(amapJsKey)
-      .then(() => {
-        setMapReady(true);
-        setMapLoadError('');
-      })
-      .catch((error) => {
-        setMapLoadError(getErrorMessage(error, '地图加载失败。'));
-        setMapReady(false);
-      });
-  }, [getErrorMessage]);
-
-  const hasUsableUserLocation = useMemo(
-    () => Boolean(currentCoordinates && (addressTextInput || hasManualSelectionRef.current)),
-    [addressTextInput, currentCoordinates]
+  const previewBindings = useMemo(
+    () => ({
+      mapRef: previewMapRef,
+      markerRef: previewMarkerRef,
+      dragHandlerRef: previewDragHandlerRef,
+    }),
+    []
   );
 
-  useEffect(() => {
-    if (loading || hasUsableUserLocation || !mapReady || ipLocateTriedRef.current) return;
-    ipLocateTriedRef.current = true;
+  const modalBindings = useMemo(
+    () => ({
+      mapRef: modalMapRef,
+      markerRef: modalMarkerRef,
+      dragHandlerRef: modalDragHandlerRef,
+    }),
+    []
+  );
 
-    prefillAddressByIP(form.getFieldValue(['address']) || emptyHotelProfile.address, amapWebKey)
-      .then((prefill) => {
-        if (!prefill) return;
-        const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-        const hasTextInput = hasAddressTextInput(latestAddress);
-        if (hasTextInput || hasManualSelectionRef.current) {
-          return;
-        }
+  const getLatestAddress = useCallback(
+    () => form.getFieldValue(['address']) || emptyHotelProfile.address,
+    [form]
+  );
 
-        const ipCoordinates = prefill.coordinates;
-        const hasValidCoordinates = Number.isFinite(ipCoordinates?.latitude) && Number.isFinite(ipCoordinates?.longitude);
-        if (!hasValidCoordinates) {
-          setInitialCoordinates(null);
-          return;
-        }
-
-        setMapStatusText('正在根据 IP 定位...');
-        setInitialCoordinates(ipCoordinates);
-
-        const nextAddress = {
-          ...latestAddress,
-          ...prefill.addressPatch,
-          latitude: ipCoordinates.latitude,
-          longitude: ipCoordinates.longitude,
-        };
-
-        form.setFieldsValue({ address: nextAddress });
-        if (Object.keys(prefill.addressPatch).length) {
-          syncRegionOptionsFromAddress(nextAddress);
-        }
-      })
-      .finally(() => {
-        window.setTimeout(() => setMapStatusText(''), 800);
-      });
-  }, [form, hasUsableUserLocation, loading, mapReady, syncRegionOptionsFromAddress]);
-
-  useEffect(() => {
-    if (activeTab !== 'basic') {
-      destroyMapInstance(previewBindings);
-      return;
-    }
-    if (!mapReady || !window.AMap || !previewMapContainerRef.current || mapLoadError) return;
-    const timer = window.setTimeout(() => {
-      try {
-        renderMapInstance(window.AMap, previewMapContainerRef.current, displayCoordinates, previewBindings, applyPointSelection);
-        previewMapRef.current?.resize?.();
-        if (displayCoordinates) {
-          previewMapRef.current?.setCenter?.([displayCoordinates.longitude, displayCoordinates.latitude]);
-        }
-      } catch (error) {
-        setMapLoadError(getErrorMessage(error, '地图预览渲染失败。'));
-      }
-    }, 80);
-    return () => window.clearTimeout(timer);
-  }, [activeTab, applyPointSelection, displayCoordinates, getErrorMessage, mapLoadError, mapReady, previewBindings]);
-
-  useEffect(() => {
-    if (!mapModalOpen || !mapReady || !window.AMap || !modalMapContainerRef.current || mapLoadError) return;
-    const timer = window.setTimeout(() => {
-      try {
-        renderMapInstance(window.AMap, modalMapContainerRef.current, displayCoordinates, modalBindings, applyPointSelection);
-        modalMapRef.current?.resize?.();
-        if (displayCoordinates) {
-          modalMapRef.current?.setCenter?.([displayCoordinates.longitude, displayCoordinates.latitude]);
-        }
-      } catch (error) {
-        setMapLoadError(getErrorMessage(error, '地图弹窗渲染失败。'));
-      }
-    }, 120);
-    return () => window.clearTimeout(timer);
-  }, [applyPointSelection, displayCoordinates, getErrorMessage, mapLoadError, mapModalOpen, mapReady, modalBindings]);
-
-  const syncMapByCoordinates = useCallback((bindings, coordinates) => {
-    if (!bindings || !coordinates) return;
-    const map = bindings.mapRef?.current;
-    const marker = bindings.markerRef?.current;
-    if (!map || !marker) return;
-    const center = [coordinates.longitude, coordinates.latitude];
-    marker.setPosition?.(center);
-    map.setCenter?.(center);
+  const updateDisplayCoordinates = useCallback((coordinates) => {
+    const nextCoordinates = normalizeCoordinates(coordinates);
+    setDisplayCoordinates((currentCoordinates) => (
+      isSameCoordinates(currentCoordinates, nextCoordinates)
+        ? currentCoordinates
+        : nextCoordinates
+    ));
+    return nextCoordinates;
   }, []);
 
-  useEffect(() => {
-    if (!displayCoordinates) return;
-    syncMapByCoordinates(previewBindings, displayCoordinates);
-    syncMapByCoordinates(modalBindings, displayCoordinates);
-  }, [displayCoordinates, modalBindings, previewBindings, syncMapByCoordinates]);
-
-  useEffect(() => {
-    const detailText = typeof detailValue === 'string' ? detailValue.trim() : '';
-    if (!mapReady || !detailText) return;
-    if (updateSourceRef.current === 'map') {
-      updateSourceRef.current = 'idle';
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      triggerAddressLocate();
-    }, 350);
-    return () => window.clearTimeout(timer);
-  }, [detailValue, mapReady, triggerAddressLocate]);
-
-  useEffect(() => () => resetMapObjects(), [resetMapObjects]);
-
-  const updateAddressField = useCallback((patch) => {
-    const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-    const nextAddress = { ...latestAddress, ...patch };
+  const setAddressFields = useCallback((nextAddress) => {
     form.setFieldsValue({ address: nextAddress });
     return nextAddress;
   }, [form]);
 
-  const handleRegionChange = useCallback(async ({ level, value, patch }) => {
-    hasManualSelectionRef.current = false;
-    const nextAddress = updateAddressField(patch);
-    setAddressLocateError('');
-    setPointPickError('');
-
-    const optionsMap = {
-      province: provinceOptions,
-      city: cityOptions,
-      district: districtOptions,
+  const patchAddressFields = useCallback((patch) => {
+    const nextAddress = {
+      ...getLatestAddress(),
+      ...patch,
     };
-    const optionCoordinates = getOptionCoordinates(optionsMap[level], value);
-    if (optionCoordinates) {
-      form.setFieldsValue({ address: { ...nextAddress, ...optionCoordinates } });
-      setInitialCoordinates(optionCoordinates);
-    }
+    return setAddressFields(nextAddress);
+  }, [getLatestAddress, setAddressFields]);
 
-    if (level === 'province') {
-      try {
-        setCityOptions(value ? await fetchDistrictOptions(amapWebKey, value) : []);
-      } catch (error) {
-        setCityOptions([]);
-      }
-      setDistrictOptions([]);
-    }
+  const applyResolvedLocation = useCallback((location, { markManual = false } = {}) => {
+    const nextAddress = buildAddressFromLocation(location, getLatestAddress(), { markManual });
+    setAddressFields(nextAddress);
+    updateDisplayCoordinates(nextAddress);
+    return nextAddress;
+  }, [getLatestAddress, setAddressFields, updateDisplayCoordinates]);
 
-    if (level === 'city') {
-      try {
-        setDistrictOptions(value ? await fetchDistrictOptions(amapWebKey, value) : []);
-      } catch (error) {
-        setDistrictOptions([]);
-      }
-    }
-
-    if (mapReady) {
-      triggerAddressLocate({ address: nextAddress });
-    }
-  }, [cityOptions, districtOptions, form, mapReady, provinceOptions, triggerAddressLocate, updateAddressField]);
-
-  const handleProvinceChange = useCallback((value) => handleRegionChange({
-    level: 'province',
-    value,
-    patch: { province: value, city: '', district: '', latitude: null, longitude: null },
-  }), [handleRegionChange]);
-
-  const handleCityChange = useCallback((value) => handleRegionChange({
-    level: 'city',
-    value,
-    patch: { city: value, district: '', latitude: null, longitude: null },
-  }), [handleRegionChange]);
-
-  const handleDistrictChange = useCallback((value) => handleRegionChange({
-    level: 'district',
-    value,
-    patch: { district: value, latitude: null, longitude: null },
-  }), [handleRegionChange]);
-
-  const handleDetailInputChange = useCallback(() => {
-    hasManualSelectionRef.current = false;
+  const clearLocationErrors = useCallback(() => {
+    setAddressLocateErrorTitle(defaultLocateErrorTitle);
+    setAddressLocateError('');
+    setMarkerResolveError('');
   }, []);
 
-  const handleSaveAddressDraft = useCallback(() => {
-    const latestAddress = form.getFieldValue(['address']) || emptyHotelProfile.address;
-    saveAddressDraftToSession(latestAddress, { silent: false, mode: 'manual' });
-  }, [form, saveAddressDraftToSession]);
+  const runRegionTask = useCallback(async (task) => {
+    regionLoadingCountRef.current += 1;
+    setRegionLoading(true);
+
+    try {
+      return await task();
+    } finally {
+      regionLoadingCountRef.current = Math.max(0, regionLoadingCountRef.current - 1);
+      if (regionLoadingCountRef.current === 0) {
+        setRegionLoading(false);
+      }
+    }
+  }, []);
+
+  const loadDistrictOptionsByKeyword = useCallback(async (keyword, setter) => {
+    const normalizedKeyword = String(keyword || '').trim();
+    if (!normalizedKeyword) {
+      setter([]);
+      return [];
+    }
+
+    return runRegionTask(async () => {
+      const options = await fetchDistrictOptions(normalizedKeyword);
+      setter(options);
+      return options;
+    });
+  }, [runRegionTask]);
+
+  const handleMarkerDragEnd = useCallback(async (coordinates) => {
+    if (readOnly) {
+      return;
+    }
+
+    const nextCoordinates = normalizeCoordinates(coordinates);
+    if (!nextCoordinates) {
+      return;
+    }
+
+    const requestId = ++markerRequestIdRef.current;
+    clearLocationErrors();
+    updateDisplayCoordinates(nextCoordinates);
+    patchAddressFields({
+      latitude: nextCoordinates.latitude,
+      longitude: nextCoordinates.longitude,
+      isManualLocation: true,
+    });
+    setMapStatusText('正在解析拖拽位置...');
+
+    try {
+      const location = await fetchMerchantMapRegeocode(nextCoordinates);
+      if (requestId !== markerRequestIdRef.current) {
+        return;
+      }
+
+      applyResolvedLocation(location, { markManual: true });
+    } catch (error) {
+      if (requestId === markerRequestIdRef.current) {
+        setMarkerResolveError(getMapDisplayErrorMessage(
+          error,
+          '拖动地图标记后回填地址失败，请稍后重试。'
+        ));
+      }
+    } finally {
+      if (requestId === markerRequestIdRef.current) {
+        setMapStatusText('');
+      }
+    }
+  }, [
+    applyResolvedLocation,
+    clearLocationErrors,
+    patchAddressFields,
+    readOnly,
+    updateDisplayCoordinates,
+  ]);
+
+  useEffect(() => {
+    if (committedCoordinates) {
+      updateDisplayCoordinates(committedCoordinates);
+    }
+  }, [committedCoordinates, updateDisplayCoordinates]);
+
+  useEffect(() => {
+    let active = true;
+
+    runRegionTask(async () => {
+      try {
+        const options = await fetchDistrictOptions(DEFAULT_COUNTRY);
+        if (active) {
+          setProvinceOptions(options);
+        }
+      } catch (error) {
+        if (active) {
+          setProvinceOptions([]);
+          message.warning(getErrorMessage(error, '加载省份选项失败。'));
+        }
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [getErrorMessage, runRegionTask]);
+
+  useEffect(() => {
+    if (!amapJsKey) {
+      setMapReady(false);
+      setMapLoadError('');
+      return undefined;
+    }
+
+    let active = true;
+
+    loadAmapScript(amapJsKey)
+      .then(() => {
+        if (active) {
+          setMapReady(true);
+          setMapLoadError('');
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setMapReady(false);
+          setMapLoadError(getMapDisplayErrorMessage(error, '地图加载失败。'));
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    let active = true;
+    const province = String(addressValue?.province || '').trim();
+    const city = String(addressValue?.city || '').trim();
+
+    if (!province) {
+      setCityOptions([]);
+      setDistrictOptions([]);
+      return;
+    }
+
+    loadDistrictOptionsByKeyword(province, (options) => {
+      if (active) {
+        setCityOptions(options);
+      }
+    }).catch((error) => {
+      if (active) {
+        setCityOptions([]);
+        setDistrictOptions([]);
+        message.warning(getErrorMessage(error, '加载城市选项失败。'));
+      }
+    });
+
+    if (!city) {
+      setDistrictOptions([]);
+      return () => {
+        active = false;
+      };
+    }
+
+    loadDistrictOptionsByKeyword(city, (options) => {
+      if (active) {
+        setDistrictOptions(options);
+      }
+    }).catch((error) => {
+      if (active) {
+        setDistrictOptions([]);
+        message.warning(getErrorMessage(error, '加载区县选项失败。'));
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    addressValue?.city,
+    addressValue?.province,
+    getErrorMessage,
+    loadDistrictOptionsByKeyword,
+    loading,
+  ]);
+
+  useEffect(() => {
+    if (loading || !mapReady || initDoneRef.current) {
+      return;
+    }
+
+    let active = true;
+    initDoneRef.current = true;
+    clearLocationErrors();
+    setMapStatusText('正在初始化地图...');
+
+    fetchMerchantMapInitialLocation()
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+
+        const source = result?.source || 'empty';
+        const location = result?.location || null;
+        const coordinates = normalizeCoordinates(location);
+
+        if ((source === 'stored' || source === 'stored_geocoded') && location) {
+          applyResolvedLocation(location, { markManual: false });
+          return;
+        }
+
+        if (source === 'ip' && coordinates) {
+          updateDisplayCoordinates(coordinates);
+          return;
+        }
+
+        updateDisplayCoordinates(null);
+      })
+      .catch((error) => {
+        if (active) {
+          setAddressLocateErrorTitle('初始化定位失败');
+          setAddressLocateError(getMapDisplayErrorMessage(
+            error,
+            '获取地图初始化位置失败，请稍后重试。'
+          ));
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setMapStatusText('');
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    applyResolvedLocation,
+    clearLocationErrors,
+    loading,
+    mapReady,
+    updateDisplayCoordinates,
+  ]);
+
+  const canRenderMap = !loading && !mapUnavailableReason && !mapLoadError && mapReady;
+
+  useEffect(() => {
+    if (activeTab !== 'basic' || !canRenderMap) {
+      destroyMapInstance(previewBindings);
+      return;
+    }
+
+    if (!window.AMap || !previewMapContainerRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      try {
+        renderMapInstance(
+          window.AMap,
+          previewMapContainerRef.current,
+          displayCoordinates,
+          previewBindings,
+          {
+            draggable: !readOnly,
+            onMarkerDragEnd: handleMarkerDragEnd,
+          }
+        );
+        previewMapRef.current?.resize?.();
+      } catch (error) {
+        setMapLoadError(getMapDisplayErrorMessage(error, '地图预览渲染失败。'));
+      }
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeTab,
+    canRenderMap,
+    displayCoordinates,
+    handleMarkerDragEnd,
+    previewBindings,
+    readOnly,
+  ]);
+
+  useEffect(() => {
+    if (!canRenderMap || !mapModalOpen) {
+      destroyMapInstance(modalBindings);
+      return;
+    }
+
+    if (!window.AMap || !modalMapContainerRef.current) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      try {
+        renderMapInstance(
+          window.AMap,
+          modalMapContainerRef.current,
+          displayCoordinates,
+          modalBindings,
+          {
+            draggable: !readOnly,
+            onMarkerDragEnd: handleMarkerDragEnd,
+          }
+        );
+        modalMapRef.current?.resize?.();
+      } catch (error) {
+        setMapLoadError(getMapDisplayErrorMessage(error, '地图弹窗渲染失败。'));
+      }
+    }, 120);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    canRenderMap,
+    displayCoordinates,
+    handleMarkerDragEnd,
+    mapModalOpen,
+    modalBindings,
+    readOnly,
+  ]);
+
+  useEffect(() => () => {
+    destroyMapInstance(previewBindings);
+    destroyMapInstance(modalBindings);
+  }, [modalBindings, previewBindings]);
+
+  const handleProvinceChange = useCallback((value) => {
+    clearLocationErrors();
+    setDetailAutocompleteOptions([]);
+
+    const center = getOptionCenter(provinceOptions, value);
+    updateDisplayCoordinates(center);
+    setCityOptions([]);
+    setDistrictOptions([]);
+    patchAddressFields({
+      country: DEFAULT_COUNTRY,
+      province: value,
+      city: '',
+      district: '',
+      latitude: center?.latitude ?? null,
+      longitude: center?.longitude ?? null,
+      isManualLocation: true,
+    });
+  }, [
+    clearLocationErrors,
+    patchAddressFields,
+    provinceOptions,
+    updateDisplayCoordinates,
+  ]);
+
+  const handleCityChange = useCallback((value) => {
+    clearLocationErrors();
+    setDetailAutocompleteOptions([]);
+
+    const center = getOptionCenter(cityOptions, value);
+    updateDisplayCoordinates(center);
+    setDistrictOptions([]);
+    patchAddressFields({
+      city: value,
+      district: '',
+      latitude: center?.latitude ?? null,
+      longitude: center?.longitude ?? null,
+      isManualLocation: true,
+    });
+  }, [
+    cityOptions,
+    clearLocationErrors,
+    patchAddressFields,
+    updateDisplayCoordinates,
+  ]);
+
+  const handleDistrictChange = useCallback((value) => {
+    clearLocationErrors();
+    setDetailAutocompleteOptions([]);
+
+    const center = getOptionCenter(districtOptions, value);
+    updateDisplayCoordinates(center);
+    patchAddressFields({
+      district: value,
+      latitude: center?.latitude ?? null,
+      longitude: center?.longitude ?? null,
+      isManualLocation: true,
+    });
+  }, [
+    clearLocationErrors,
+    districtOptions,
+    patchAddressFields,
+    updateDisplayCoordinates,
+  ]);
+
+  const handleDetailInputChange = useCallback((event) => {
+    clearLocationErrors();
+    const nextValue = String(event?.target?.value || '').trim();
+    if (!nextValue) {
+      setDetailAutocompleteOptions([]);
+    }
+  }, [clearLocationErrors]);
+
+  const handleDetailSearch = useCallback(async (keyword) => {
+    const normalizedKeyword = String(keyword || '').trim();
+    const requestId = ++autocompleteRequestIdRef.current;
+
+    if (!normalizedKeyword || !mapReady || !window.AMap) {
+      setDetailAutocompleteLoading(false);
+      setDetailAutocompleteOptions([]);
+      return;
+    }
+
+    clearLocationErrors();
+    setDetailAutocompleteLoading(true);
+
+    try {
+      const suggestions = await searchAddressSuggestions(window.AMap, normalizedKeyword, {
+        city: addressValue?.city || addressValue?.province || '',
+      });
+      if (requestId !== autocompleteRequestIdRef.current) {
+        return;
+      }
+
+      setDetailAutocompleteOptions(
+        suggestions.map((item) => ({
+          value: item.value,
+          label: item.label,
+          fullAddress: item.fullAddress,
+          coordinates: item.coordinates,
+        }))
+      );
+    } catch (error) {
+      if (requestId === autocompleteRequestIdRef.current) {
+        setDetailAutocompleteOptions([]);
+      }
+    } finally {
+      if (requestId === autocompleteRequestIdRef.current) {
+        setDetailAutocompleteLoading(false);
+      }
+    }
+  }, [
+    addressValue?.city,
+    addressValue?.province,
+    clearLocationErrors,
+    mapReady,
+  ]);
+
+  const handleDetailSelect = useCallback(async (value, option) => {
+    const requestId = ++geocodeRequestIdRef.current;
+    const latestAddress = getLatestAddress();
+    const fallbackAddress = formatAddressText({
+      ...latestAddress,
+      detail: value || getDetailText(latestAddress),
+    });
+    const fullAddress = String(option?.fullAddress || fallbackAddress).trim();
+
+    if (!fullAddress) {
+      return;
+    }
+
+    clearLocationErrors();
+    setMapStatusText('正在根据地址定位...');
+    setDetailAutocompleteOptions([]);
+
+    try {
+      const location = await fetchMerchantMapGeocode(fullAddress);
+      if (requestId !== geocodeRequestIdRef.current) {
+        return;
+      }
+
+      applyResolvedLocation({
+        ...location,
+        detail: String(location?.detail || value || '').trim(),
+      }, { markManual: true });
+    } catch (error) {
+      if (requestId === geocodeRequestIdRef.current) {
+        setAddressLocateErrorTitle(defaultLocateErrorTitle);
+        setAddressLocateError(getMapDisplayErrorMessage(
+          error,
+          '根据当前地址定位失败，请重新选择地址联想项。'
+        ));
+      }
+    } finally {
+      if (requestId === geocodeRequestIdRef.current) {
+        setMapStatusText('');
+      }
+    }
+  }, [
+    applyResolvedLocation,
+    clearLocationErrors,
+    getLatestAddress,
+  ]);
 
   const onMapModalAfterOpenChange = useCallback((open) => {
-    if (!open) destroyMapInstance(modalBindings);
+    if (!open) {
+      destroyMapInstance(modalBindings);
+    }
   }, [modalBindings]);
 
   return {
@@ -577,10 +674,13 @@ export default function useHotelInfoMap({
       regionLoading,
       mapModalOpen,
       mapLoadError,
+      addressLocateErrorTitle,
       addressLocateError,
-      pointPickError,
+      markerResolveError,
       mapStatusText,
       mapUnavailableReason,
+      detailAutocompleteOptions,
+      detailAutocompleteLoading,
     },
     mapRefs: {
       previewMapContainerRef,
@@ -588,6 +688,7 @@ export default function useHotelInfoMap({
     },
     mapValues: {
       addressValue,
+      displayCoordinates,
     },
     mapActions: {
       setMapModalOpen,
@@ -595,7 +696,8 @@ export default function useHotelInfoMap({
       handleCityChange,
       handleDistrictChange,
       handleDetailInputChange,
-      handleSaveAddressDraft,
+      handleDetailSearch,
+      handleDetailSelect,
       onMapModalAfterOpenChange,
     },
   };

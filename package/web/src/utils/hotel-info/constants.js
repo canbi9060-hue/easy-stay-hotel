@@ -1,14 +1,11 @@
 
 // ---- config/constants ----
-export const amapJsKey = process.env.REACT_APP_AMAP_JS_KEY || process.env.REACT_APP_AMAP_KEY;
-export const amapWebKey = process.env.REACT_APP_AMAP_WEB_KEY || process.env.REACT_APP_AMAP_KEY;
-export const amapSecurityCode = process.env.REACT_APP_AMAP_SECURITY_CODE || '';
+export const amapJsKey = process.env.REACT_APP_AMAP_JS_KEY || '';
 
 export const DEFAULT_COUNTRY = '中国';
 export const DEFAULT_CENTER = { longitude: 116.397428, latitude: 39.90923 };
 export const AMAP_VERSIONS = ['2.0', '1.4.15'];
 export const MAP_ERROR_PATTERNS = /(USERKEY|INVALID_USER_KEY|PLAT_NOMATCH|SECURITY|Unimplemented type)/i;
-export const WEB_KEY_ERROR_PATTERNS = /(USERKEY|INVALID_USER_KEY|PLAT_NOMATCH|KEY)/i;
 
 export const countryOptions = [{ label: DEFAULT_COUNTRY, value: DEFAULT_COUNTRY }];
 

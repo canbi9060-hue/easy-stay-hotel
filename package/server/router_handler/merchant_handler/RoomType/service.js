@@ -4,7 +4,6 @@ const {
   roomTypeAuditStatus,
   maxRoomNameLength,
   maxBedConfigLength,
-  maxFloorTextLength,
   maxDescriptionLength,
   maxRoomTypeImageCount,
 } = require('./constants');
@@ -14,7 +13,6 @@ const {
   normalizeIntIdList,
   toNullableNumber,
   toPriceCents,
-  parseRoomTypeFloorText,
   deleteLocalRoomTypeImageSafely,
   mapRoomTypeSummary,
   mapRoomTypeDetail,
@@ -35,6 +33,7 @@ const {
   getMerchantHotelReviewStatus,
   getMerchantHotelRoomTypeMeta,
 } = require('./repository');
+const { countRoomsByRoomTypeId } = require('../Room/repository');
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
@@ -82,14 +81,6 @@ const parseRoomTypeDraftRequestPayload = (payload) => {
 
 const normalizeRoomTypeDraftFormValues = (value) => {
   const source = isPlainObject(value) ? value : {};
-  const floorStart = normalizePositiveInt(source.floorStart);
-  const floorEndRaw = source.floorEnd === undefined || source.floorEnd === null || source.floorEnd === ''
-    ? floorStart
-    : normalizePositiveInt(source.floorEnd);
-  const floorEnd = floorStart && floorEndRaw && floorEndRaw >= floorStart ? floorEndRaw : null;
-  const floorText = floorStart && floorEnd
-    ? (floorStart === floorEnd ? `${floorStart}层` : `${floorStart}-${floorEnd}层`)
-    : safeTrim(source.floorText).slice(0, maxFloorTextLength);
 
   return {
     roomName: safeTrim(source.roomName).slice(0, maxRoomNameLength),
@@ -98,10 +89,6 @@ const normalizeRoomTypeDraftFormValues = (value) => {
       const numericValue = toNullableNumber(source.areaSize);
       return numericValue === null || Number.isNaN(numericValue) || numericValue <= 0 ? null : roundTwoDecimals(numericValue);
     })(),
-    floorText,
-    floorStart,
-    floorEnd,
-    roomCount: normalizePositiveInt(source.roomCount),
     maxGuests: normalizePositiveInt(source.maxGuests),
     description: safeTrim(source.description).slice(0, maxDescriptionLength),
     facilityTags: normalizeFacilityTags(source.facilityTags),
@@ -138,23 +125,6 @@ const validateRoomTypePayload = (payload, options = {}) => {
   if (normalizedValues.areaSize === null) {
     return { message: '请输入合法的房间面积', field: 'areaSize' };
   }
-
-  const parsedFloor = parseRoomTypeFloorText(normalizedValues.floorText);
-  if (!parsedFloor) {
-    return { message: '楼层区间不合法，请重新选择', field: 'floorText' };
-  }
-
-  const totalFloorCount = Number(hotelMeta?.total_floor_count);
-  if (!Number.isInteger(totalFloorCount) || totalFloorCount <= 0) {
-    return { message: '请先在酒店资料中完善总楼层', field: 'floorText' };
-  }
-  if (parsedFloor.floorEnd > totalFloorCount) {
-    return { message: '楼层区间不合法，请重新选择', field: 'floorText' };
-  }
-
-  if (!normalizedValues.roomCount) {
-    return { message: '请输入合法的房间数量', field: 'roomCount' };
-  }
   if (!normalizedValues.maxGuests) {
     return { message: '请输入合法的最多入住人数', field: 'maxGuests' };
   }
@@ -189,8 +159,6 @@ const validateRoomTypePayload = (payload, options = {}) => {
       roomName: normalizedValues.roomName,
       bedConfig: normalizedValues.bedConfig,
       areaSize: normalizedValues.areaSize,
-      floorText: parsedFloor.floorText,
-      roomCount: normalizedValues.roomCount,
       maxGuests: normalizedValues.maxGuests,
       description: normalizedValues.description,
       facilityTags: normalizedValues.facilityTags,
@@ -522,8 +490,6 @@ const saveMerchantRoomType = async ({
     roomName,
     bedConfig,
     areaSize,
-    floorText,
-    roomCount,
     maxGuests,
     description,
     facilityTags,
@@ -562,15 +528,13 @@ const saveMerchantRoomType = async ({
       const insertResult = await runQuery(
         tx,
         `INSERT INTO merchant_room_types
-          (merchant_user_id, room_name, bed_config, area_size, floor_text, room_count, max_guests, description, facility_tags, sale_price_cents, list_price_cents, audit_status, audit_remark, is_on_sale, is_forced_off_sale, audit_admin_id, forced_off_admin_id, audit_at, forced_off_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (merchant_user_id, room_name, bed_config, area_size, max_guests, description, facility_tags, sale_price_cents, list_price_cents, audit_status, audit_remark, is_on_sale, is_forced_off_sale, audit_admin_id, forced_off_admin_id, audit_at, forced_off_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           merchantUserId,
           roomName,
           bedConfig,
           areaSize,
-          floorText,
-          roomCount,
           maxGuests,
           description,
           JSON.stringify(facilityTags),
@@ -594,8 +558,6 @@ const saveMerchantRoomType = async ({
          SET room_name = ?,
              bed_config = ?,
              area_size = ?,
-             floor_text = ?,
-             room_count = ?,
              max_guests = ?,
              description = ?,
              facility_tags = ?,
@@ -614,8 +576,6 @@ const saveMerchantRoomType = async ({
           roomName,
           bedConfig,
           areaSize,
-          floorText,
-          roomCount,
           maxGuests,
           description,
           JSON.stringify(facilityTags),
@@ -762,6 +722,10 @@ const deleteMerchantRoomTypeById = async (merchantUserId, roomTypeId) => {
     }
     if (Number(row.audit_status) === roomTypeAuditStatus.pending) {
       throw createHandlerError('validation', '房型正在审核中，暂不允许删除。', 'auditStatus');
+    }
+    const referencedRoomCount = await countRoomsByRoomTypeId(roomTypeId, tx);
+    if (referencedRoomCount > 0) {
+      throw createHandlerError('validation', '该房型已绑定房间，暂不允许删除。', 'id');
     }
 
     const imageRows = await getRoomTypeImagesByRoomTypeId(roomTypeId, tx, { forUpdate: true });

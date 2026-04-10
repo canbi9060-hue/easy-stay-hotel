@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Layout, Menu } from 'antd';
-import { AuditOutlined, BankOutlined, DashboardOutlined } from '@ant-design/icons';
+import { AuditOutlined, BankOutlined, DashboardOutlined, UnorderedListOutlined } from '@ant-design/icons';
 
 import Header from '../../../components/Header';
 
@@ -14,6 +14,8 @@ export default function AdminLayout() {
     ? '/admin/hotel-review'
     : location.pathname.startsWith('/admin/room-type-review')
       ? '/admin/room-type-review'
+      : location.pathname.startsWith('/admin/rooms')
+        ? '/admin/rooms'
       : location.pathname;
 
   const menuItems = [
@@ -28,6 +30,12 @@ export default function AdminLayout() {
       icon: <AuditOutlined />,
       label: '房型审核',
       onClick: () => navigate('/admin/room-type-review'),
+    },
+    {
+      key: '/admin/rooms',
+      icon: <UnorderedListOutlined />,
+      label: '房间管理',
+      onClick: () => navigate('/admin/rooms'),
     },
     {
       key: '/admin/hotel-review',
